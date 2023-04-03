@@ -60,3 +60,6 @@
 #define ICDICER               0x180         // offset to interrupt clear-enable regs
 #define ICDIPTR               0x800         // offset to interrupt processor targets regs
 #define ICDICFR               0xC00         // offset to interrupt configuration regs
+
+//Constants for IRQ Handler
+#define PS2_IRQ              0x4F //IR ID for PS2

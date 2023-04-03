@@ -69,16 +69,12 @@ void PS2_ISR(void)
 
     PS2_data = *(PS2_ptr);      // read the Data register in the PS/2 port
     RVALID = PS2_data & 0x8000; // extract the RVALID field
+
+    volatile int *LEDR_ptr = (int *)LEDR_BASE;
+
     if (RVALID)
     {
-        /* shift the next data byte into the display */
-        byte1 = byte2;
-        byte2 = byte3;
-        byte3 = PS2_data & 0xFF;
-        HEX_PS2(byte1, byte2, byte3);
-        if ((byte2 == (char)0xAA) && (byte3 == (char)0x00))
-            // mouse inserted; initialize sending of data
-            *(PS2_ptr) = 0xF4;
+        *(LEDR_ptr) = PS2_data;
     }
 }
 

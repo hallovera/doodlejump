@@ -9,6 +9,8 @@ void enable_A9_interrupts(void);
 /* function prototypes */
 void HEX_PS2(char, char, char);
 
+void PS2_ISR(void);
+
 /* key_dir and pattern are written by interrupt service routines; we have to
  * declare these as volatile to avoid the compiler caching their values in
  * registers */
@@ -41,39 +43,42 @@ int main(void)
     // interrupts
     config_KEYs();          // configure pushbutton KEYs to generate interrupts
     enable_A9_interrupts(); // enable interrupts
-    while (1)
-    {
-        if (tick)
-        {
-            tick = 0;
-            *HPS_GPIO1_ptr = HPS_timer_LEDG; // turn on/off the green light LEDG
-            HPS_timer_LEDG ^= 0x01000000;    // toggle the bit that controls LEDG
-        }
-    }
+    // while (1)
+    // {
+    //     if (tick)
+    //     {
+    //         tick = 0;
+    //         *HPS_GPIO1_ptr = HPS_timer_LEDG; // turn on/off the green light LEDG
+    //         HPS_timer_LEDG ^= 0x01000000;    // toggle the bit that controls LEDG
+    //     }
+    // }
+    
+    // PS/2 mouse needs to be reset (must be already plugged in)
+    *(PS2_ptr) = 0xFF; // reset
+    
+}
 
+void PS2_ISR(void)
+{
     /* Declare volatile pointers to I/O registers (volatile means that IO load
-and store instructions will be used to access these pointer locations,
-instead of regular memory loads and stores) */
+    and store instructions will be used to access these pointer locations,
+    instead of regular memory loads and stores) */
     volatile int *PS2_ptr = (int *)PS2_BASE;
     int PS2_data, RVALID;
     char byte1 = 0, byte2 = 0, byte3 = 0;
-    // PS/2 mouse needs to be reset (must be already plugged in)
-    *(PS2_ptr) = 0xFF; // reset
-    while (1)
+
+    PS2_data = *(PS2_ptr);      // read the Data register in the PS/2 port
+    RVALID = PS2_data & 0x8000; // extract the RVALID field
+    if (RVALID)
     {
-        PS2_data = *(PS2_ptr);      // read the Data register in the PS/2 port
-        RVALID = PS2_data & 0x8000; // extract the RVALID field
-        if (RVALID)
-        {
-            /* shift the next data byte into the display */
-            byte1 = byte2;
-            byte2 = byte3;
-            byte3 = PS2_data & 0xFF;
-            HEX_PS2(byte1, byte2, byte3);
-            if ((byte2 == (char)0xAA) && (byte3 == (char)0x00))
-                // mouse inserted; initialize sending of data
-                *(PS2_ptr) = 0xF4;
-        }
+        /* shift the next data byte into the display */
+        byte1 = byte2;
+        byte2 = byte3;
+        byte3 = PS2_data & 0xFF;
+        HEX_PS2(byte1, byte2, byte3);
+        if ((byte2 == (char)0xAA) && (byte3 == (char)0x00))
+            // mouse inserted; initialize sending of data
+            *(PS2_ptr) = 0xF4;
     }
 }
 

@@ -88,62 +88,8 @@ int main(void)
 	
 	short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA};
 	
-	/*THE BOXES WILL THE STORED IN A DOUBLE ARRAY OF INTEGERS
-	* The first array holds an array of integers
-	* The second array of integers holds
-	* x coord of box
-	* y coord of box
-	* x step of box
-	* y step of box
-	* x previous
-	* y previous
-	* x double previous
-	* y double previous
-	*/
+	//BUFFER SET UP
 	
-	int boxes [8][NUM_BOXES];
-	short int boxColours[NUM_BOXES];
-    short int lineColours[NUM_BOXES];
-	
-	//Now let's initalize the boxes with rand()
-	
-	int boxNum;
-    for (boxNum = 0; boxNum < NUM_BOXES; boxNum++) {
-		//Set x coord
-		boxes[0][boxNum] = rand() % (RESOLUTION_X - BOX_LEN);
-		
-		//Set y coord
-		boxes[1][boxNum] = rand() % (RESOLUTION_Y - BOX_LEN); 
-			
-		
-		//Set x step
-		boxes[2][boxNum] = rand() % 2 * 2 - 1;
-			
-		
-		//Set y step
-		boxes[3][boxNum] = rand() % 2 * 2 - 1;
-		
-		//Set x previous
-		boxes[4][boxNum] = 0;//boxes[0][boxNum];
-		
-		//Set y previous
-		boxes[5][boxNum] = 0;//boxes[1][boxNum];
-		
-		//Set x double previous
-		boxes[6][boxNum] = 0;//boxes[0][boxNum];
-		
-		//Set y double previous
-		boxes[7][boxNum] = 0;//boxes[1][boxNum];
-			
-			
-		//Set colour
-		boxColours[boxNum] = colours[rand() % NUM_COLOURS];
-		
-        //Set line colours
-        lineColours[boxNum] = colours[rand() % NUM_COLOURS];
-
-	}
-
     /* set front pixel buffer to start of FPGA On-chip memory */
     *(pixel_ctrl_ptr + 1) = 0xC8000000; // first store the address in the 
                                         // back buffer
@@ -157,20 +103,19 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1); // we draw on the back buffer
     clear_screen(); // pixel_buffer_start points to the pixel buffer
 	
-	while (1)
+	//PROGRAM LOOP
+	
+	bool gameOver = false;
+	bool keepPlaying = true;
+	
+	do 
     {
         
-		// Erase any boxes and lines that were drawn in the last iteration 
-        erase(boxes);
-		//clear_screen();
-
-        // code for drawing the boxes and lines (not shown)
-        // code for updating the locations of boxes (not shown)
-		draw(boxes, boxColours, lineColours);
+		
 		
         wait_for_vsync(); // swap front and back buffers on VGA vertical sync
         pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
-    }
+    } while (keepPlaying)
 }
 
 // Code for subroutines (not shown)

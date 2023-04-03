@@ -1,8 +1,3 @@
-#include "address_map_arm.h"
-
-/* function prototypes */
-void HEX_PS2(char, char, char);
-
 void set_A9_IRQ_stack(void);
 void config_GIC(void);
 void config_HPS_timer(void);
@@ -10,7 +5,6 @@ void config_HPS_GPIO1(void);
 void config_interval_timer(void);
 void config_KEYs(void);
 void enable_A9_interrupts(void);
-// void config_PS2(void);
 /* key_dir and pattern are written by interrupt service routines; we have to
  * declare these as volatile to avoid the compiler caching their values in
  * registers */
@@ -32,83 +26,52 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
  ********************************************************************************/
 int main(void)
 {
-    // volatile int *HPS_GPIO1_ptr = (int *)HPS_GPIO1_BASE; // GPIO1 base address
-    // volatile int HPS_timer_LEDG =
-    //     0x01000000;          // value to turn on the HPS green light LEDG
+    volatile int *HPS_GPIO1_ptr = (int *)HPS_GPIO1_BASE; // GPIO1 base address
+    volatile int HPS_timer_LEDG =
+        0x01000000;          // value to turn on the HPS green light LEDG
     set_A9_IRQ_stack();      // initialize the stack pointer for IRQ mode
     config_GIC();            // configure the general interrupt controller
-    // config_PS2(); // Configure the PS2 keyboard 
-    // config_HPS_timer();      // configure the HPS timer
-    // config_HPS_GPIO1();      // configure the HPS GPIO1 interface
-    // config_interval_timer(); // configure Altera interval timer to generate
+    config_HPS_timer();      // configure the HPS timer
+    config_HPS_GPIO1();      // configure the HPS GPIO1 interface
+    config_interval_timer(); // configure Altera interval timer to generate
     // interrupts
-    // config_KEYs();          // configure pushbutton KEYs to generate interrupts
+    config_KEYs();          // configure pushbutton KEYs to generate interrupts
     enable_A9_interrupts(); // enable interrupts
-    // while (1)
-    // {
-    //     if (tick)
-    //     {
-    //         tick = 0;
-    //         *HPS_GPIO1_ptr = HPS_timer_LEDG; // turn on/off the green light LEDG
-    //         HPS_timer_LEDG ^= 0x01000000;    // toggle the bit that controls LEDG
-    //     }
-    // }
-
-    /* Declare volatile pointers to I/O registers (volatile means that IO load
-    and store instructions will be used to access these pointer locations,
-    instead of regular memory loads and stores) */
-    volatile int *PS2_ptr = (int *)PS2_BASE;
-    int PS2_data, RVALID;
-    char byte1 = 0, byte2 = 0, byte3 = 0;
-    // PS/2 mouse needs to be reset (must be already plugged in)
-    *(PS2_ptr) = 0xFF; // reset
     while (1)
     {
-        PS2_data = *(PS2_ptr);      // read the Data register in the PS/2 port
-        RVALID = PS2_data & 0x8000; // extract the RVALID field
-        if (RVALID)
+        if (tick)
         {
-            /* shift the next data byte into the display */
-            byte1 = byte2;
-            byte2 = byte3;
-            byte3 = PS2_data & 0xFF;
-            HEX_PS2(byte1, byte2, byte3);
-            if ((byte2 == (char)0xAA) && (byte3 == (char)0x00))
-                // mouse inserted; initialize sending of data
-                *(PS2_ptr) = 0xF4;
+            tick = 0;
+            *HPS_GPIO1_ptr = HPS_timer_LEDG; // turn on/off the green light LEDG
+            HPS_timer_LEDG ^= 0x01000000;    // toggle the bit that controls LEDG
         }
-    }
-
-    /****************************************************************************************
-     * Subroutine to show a string of HEX data on the HEX displays
-     ****************************************************************************************/
-    void HEX_PS2(char b1, char b2, char b3)
-    {
-        volatile int *HEX3_HEX0_ptr = (int *)HEX3_HEX0_BASE;
-        volatile int *HEX5_HEX4_ptr = (int *)HEX5_HEX4_BASE;
-        /* SEVEN_SEGMENT_DECODE_TABLE gives the on/off settings for all segments in
-         * a single 7-seg display in the DE1-SoC Computer, for the hex digits 0 - F
-         */
-        unsigned char seven_seg_decode_table[] = {
-            0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07,
-            0x7F, 0x67, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71};
-        unsigned char hex_segs[] = {0, 0, 0, 0, 0, 0, 0, 0};
-        unsigned int shift_buffer, nibble;
-        unsigned char code;
-        int i;
-        shift_buffer = (b1 << 16) | (b2 << 8) | b3;
-        for (i = 0; i < 6; ++i)
-        {
-            nibble = shift_buffer & 0x0000000F; // character is in rightmost nibble
-            code = seven_seg_decode_table[nibble];
-            hex_segs[i] = code;
-            shift_buffer = shift_buffer >> 4;
-        }
-        /* drive the hex displays */
-        *(HEX3_HEX0_ptr) = *(int *)(hex_segs);
-        *(HEX5_HEX4_ptr) = *(int *)(hex_segs + 4);
     }
 }
+
+
+
+// Define the IRQ exception handler
+void __attribute__((interrupt)) __cs3_isr_irq(void)
+{
+    // Read the ICCIAR from the processor interface
+    int address = MPCORE_GIC_CPUIF + ICCIAR;
+    int int_ID = *((int *)address);
+    if (int_ID == HPS_TIMER0_IRQ) // check if interrupt is from the HPS timer
+        HPS_timer_ISR();
+    else if (int_ID ==
+             INTERVAL_TIMER_IRQ) // check if interrupt is from the Altera timer
+        interval_timer_ISR();
+    else if (int_ID == KEYS_IRQ) // check if interrupt is from the KEYs
+        pushbutton_ISR();
+    else
+        while (1)
+            ; // if unexpected, then stay here
+    // Write to the End of Interrupt Register (ICCEOIR)
+    address = MPCORE_GIC_CPUIF + ICCEOIR;
+    *((int *)address) = int_ID;
+    return;
+}
+
 /* setup HPS timer */
 void config_HPS_timer()
 {
@@ -133,11 +96,6 @@ void config_HPS_GPIO1()
     // setting the debounce option and causing the KEY to generate an interrupt.
     // We do not use the KEY in this example.
 }
-
-// void config_PS2(void) {
-//     volatile int *PS2_ptr = (int *)PS2_BASE;
-
-// }
 /* setup the interval timer interrupts in the FPGA */
 void config_interval_timer()
 {
@@ -212,4 +170,36 @@ void config_GIC(void)
     // interrupts to CPUs
     address = MPCORE_GIC_DIST + ICDDCR;
     *((int *)address) = ENABLE;
+}
+
+// Define the remaining exception handlers
+void __attribute__((interrupt)) __cs3_reset(void)
+{
+while (1)
+;
+}
+void __attribute__((interrupt)) __cs3_isr_undef(void)
+{
+while (1)
+;
+}
+void __attribute__((interrupt)) __cs3_isr_swi(void)
+{
+while (1)
+;
+}
+void __attribute__((interrupt)) __cs3_isr_pabort(void)
+{
+while (1)
+;
+}
+void __attribute__((interrupt)) __cs3_isr_dabort(void)
+{
+while (1)
+;
+}
+void __attribute__((interrupt)) __cs3_isr_fiq(void)
+{
+while (1)
+;
 }

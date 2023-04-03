@@ -61,6 +61,12 @@ void draw_box (int x, int y, short int colour);
 void draw(int boxes[8][NUM_BOXES], short int colours[NUM_BOXES], short int lineColours[NUM_BOXES]);
 void wait_for_vsync();
 
+void draw_platforms();
+void draw_character();
+void draw_enemies();
+void calculate_new_position();
+
+
 int main(void)
 {
     volatile int * pixel_ctrl_ptr = (int *)0xFF203020;

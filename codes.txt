@@ -11,3 +11,8 @@ E072 (E0F072)
 
 Right Arrow
 E074 (E0F074)
+
+
+http://www-ug.eecg.toronto.edu/msl/nios_devices/dev_ps2.html
+https://techdocs.altium.com/display/FPGA/PS2+Keyboard+Scan+Codes
+https://www.eecg.utoronto.ca/~jayar/ece241_08F/AudioVideoCores/ps2/ps2.html#:~:text=for%20sending%20commands-,PS%2F2%20Keyboard%20protocol,the%20host%20and%20the%20keyboard.

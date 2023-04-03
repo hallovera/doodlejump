@@ -118,13 +118,9 @@ void __attribute__((interrupt)) __cs3_isr_irq(void)
     // Read the ICCIAR from the processor interface
     int address = MPCORE_GIC_CPUIF + ICCIAR;
     int int_ID = *((int *)address);
-    if (int_ID == HPS_TIMER0_IRQ) // check if interrupt is from the HPS timer
-        HPS_timer_ISR();
-    else if (int_ID ==
-             INTERVAL_TIMER_IRQ) // check if interrupt is from the Altera timer
-        interval_timer_ISR();
-    else if (int_ID == KEYS_IRQ) // check if interrupt is from the KEYs
-        pushbutton_ISR();
+    if (int_ID == PS2_IRQ) {
+        PS2_ISR();
+    }
     else
         while (1)
             ; // if unexpected, then stay here
@@ -132,6 +128,18 @@ void __attribute__((interrupt)) __cs3_isr_irq(void)
     address = MPCORE_GIC_CPUIF + ICCEOIR;
     *((int *)address) = int_ID;
     return;
+}
+
+/*Set up the PS2 to work with interrupts*/
+void config_PS2() {
+    volatile int *PS2_ptr = (int *)PS2_BASE;
+
+    //Clear the keyboard
+    *(PS2_ptr) = 0xFF; //reset the keyb
+
+    //Enable the 0th bit to have interrupts
+    *(PS2_ptr + 4) = 0x1;
+
 }
 
 /* setup HPS timer */

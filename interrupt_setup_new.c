@@ -1,3 +1,7 @@
+#include "address_map_arm.h"
+#include <stdio.h>
+#include <stdlib.h>
+
 void set_A9_IRQ_stack(void);
 void config_GIC(void);
 void config_HPS_timer(void);
@@ -10,6 +14,8 @@ void enable_A9_interrupts(void);
 void HEX_PS2(char, char, char);
 
 void PS2_ISR(void);
+
+void config_PS2();
 
 /* key_dir and pattern are written by interrupt service routines; we have to
  * declare these as volatile to avoid the compiler caching their values in
@@ -32,17 +38,32 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
  ********************************************************************************/
 int main(void)
 {
-    volatile int *HPS_GPIO1_ptr = (int *)HPS_GPIO1_BASE; // GPIO1 base address
-    volatile int HPS_timer_LEDG =
-        0x01000000;          // value to turn on the HPS green light LEDG
+    //volatile int *HPS_GPIO1_ptr = (int *)HPS_GPIO1_BASE; // GPIO1 base address
+    //volatile int HPS_timer_LEDG =
+    //    0x01000000;          // value to turn on the HPS green light LEDG
     set_A9_IRQ_stack();      // initialize the stack pointer for IRQ mode
     config_GIC();            // configure the general interrupt controller
-    config_HPS_timer();      // configure the HPS timer
-    config_HPS_GPIO1();      // configure the HPS GPIO1 interface
-    config_interval_timer(); // configure Altera interval timer to generate
+    //config_HPS_timer();      // configure the HPS timer
+    //config_HPS_GPIO1();      // configure the HPS GPIO1 interface
+    //config_interval_timer(); // configure Altera interval timer to generate
+	config_PS2();
     // interrupts
-    config_KEYs();          // configure pushbutton KEYs to generate interrupts
+    //config_KEYs();          // configure pushbutton KEYs to generate interrupts
     enable_A9_interrupts(); // enable interrupts
+	
+	volatile int count = 0;
+	
+	volatile int *LEDR_ptr = (int *)LEDR_BASE;
+	while (1) {
+		//*LEDR_ptr = count;
+		count++;
+		//delay(100);
+		if (count == 1000000) {
+			count = 0;
+		}
+	}
+	
+	
     // while (1)
     // {
     //     if (tick)
@@ -54,7 +75,7 @@ int main(void)
     // }
     
     // PS/2 mouse needs to be reset (must be already plugged in)
-    *(PS2_ptr) = 0xFF; // reset
+    //*(PS2_ptr) = 0xFF; // reset
     
 }
 
@@ -75,6 +96,7 @@ void PS2_ISR(void)
     if (RVALID)
     {
         *(LEDR_ptr) = PS2_data;
+		//*(LEDR_ptr) = 1;
     }
 }
 

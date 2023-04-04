@@ -63,3 +63,11 @@
 
 //Constants for IRQ Handler
 #define PS2_IRQ              0x4F //IR ID for PS2
+
+#define IRQ_MODE			0b10010
+#define SVC_MODE			0b10011
+
+#define INT_ENABLE			0b01000000
+#define INT_DISABLE			0b11000000
+
+#define ENABLE 0x1

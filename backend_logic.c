@@ -26,8 +26,13 @@
 
 #define PLATFORM_WIDTH 25
 #define PLATFORM_THICKNESS 8
+
+#define NUMBER_OF_PLATFORMS 7
 // y-distance between the upper-left corners of two platforms
 #define DISTANCE_BETWEEN_PLATFORMS 20
+
+#define CHARACTER_HEIGHT 45
+#define CHARACTER_WIDTH 50
 
 short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA, BROWN};
 
@@ -66,11 +71,13 @@ typedef struct character {
     int y_pos; // y position of character
 } character;
 
-// Height is distance from the bottom (currentHeightLower)
-platform generatePlatform(int num, int height) {
+// PUT THIS IN MAIN LATER
+platform platforms[NUMBER_OF_PLATFORMS];
+
+// Height is distance from the top 
+platform generatePlatform(int height) {
     platform result;
 
-    result.number = num;
     result.y_pos = height + (PLATFORM_THICKNESS - 1);
 
     // Put the platform at a random x position
@@ -135,8 +142,29 @@ void platformHit(character* ch, platform* plat) {
     }
 }
 
-bool checkIfHit(character ch, platform* plat) {
-    // IN PROGRESS
+// When platform falls below visible area, move it to top and change its type
+// Honestly doesn't need a function, just move this into main
+// height = new position at top (should be topPlatform.y_pos + distance_between_platforms or something)
+// Have it appear when the bottom platform disappears
+void moveToTop(int index, int height) {
+    platforms[index] = generatePlatform(height);
+}
+
+bool checkIfHit(character* ch, platform* plat) {
+    if (!plat->visible) {
+        return false;
+    }
+
+    int characterCentre = ((ch->x_pos + CHARACTER_WIDTH) + ch->x_pos) / 2;
+
+    bool yHit = (ch->y_pos + CHARACTER_HEIGHT == plat->y_pos);
+    bool xHit = characterCentre >= plat->x_pos && 
+                characterCentre <= plat->x_pos + PLATFORM_WIDTH - 1;
+
+    if (xHit && yHit) {
+        platformHit(ch, plat);
+        return true;
+    }
 
     return false;
 }

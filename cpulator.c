@@ -154,6 +154,7 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
  ********************************************************************************/
 int main(void)
 {
+    srand((unsigned)time(NULL));
     //volatile int *HPS_GPIO1_ptr = (int *)HPS_GPIO1_BASE; // GPIO1 base address
     //volatile int HPS_timer_LEDG =
     //    0x01000000;          // value to turn on the HPS green light LEDG

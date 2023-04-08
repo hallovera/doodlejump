@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "c:/Users/gregw/Desktop/doodlejump",
-      "program": "c:/Users/gregw/Desktop/doodlejump/build/Debug/outDebug",
+      "cwd": "c:/Users/gregw/OneDrive/doodlejump",
+      "program": "c:/Users/gregw/OneDrive/doodlejump/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

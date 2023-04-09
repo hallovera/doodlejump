@@ -1,3 +1,10 @@
+//Include statements
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h> //For use with rand()
+#include <stdbool.h> //For use in draw line
+
 /* This files provides address values that exist in the system */
 
 #define BOARD                 "DE1-SoC"
@@ -87,6 +94,40 @@
 #define INT_DISABLE			0b11000000
 
 #define ENABLE 0x1
+	
+/*
+ * Platform types:
+ *  - REGULAR: Generates bounce like normal.
+ *  - BROKEN: Breaks immediately and does NOT generate bounce. Character will fall through (useless!)
+ *  - MOVING: COnstantly moving in x direction.
+ *  - DISAPPEARING: Generates bounce when landed on, then immedately disappears (cannot be reused)
+ */
+typedef enum platformType {
+    REGULAR, 
+    BROKEN, 
+    MOVING, 
+    DISAPPEARING
+} platformType;
+
+typedef struct platform {
+    int number;
+    platformType type;
+    short int color;
+    
+    // Position of UPPER LEFT of platform
+    int x_pos;
+    int y_pos;
+	
+	int x_pos_prev;
+	int y_pos_prev;
+	
+	int x_pos_prev2;
+	int y_pos_prev2;
+	
+	int delta_x;
+    
+    bool visible;
+} platform;
 
 void set_A9_IRQ_stack(void);
 void config_GIC(void);
@@ -100,23 +141,27 @@ void enable_A9_interrupts(void);
 /* Screen size. */
 #define RESOLUTION_X 320
 #define RESOLUTION_Y 240
-
-/* Constants for animation */
-#define BOX_LEN 8
-#define NUM_BOXES 8
-#define NUM_COLOURS 10
 	
 #define PLAYER_SIZE_X_LATERAL 50
 #define PLAYER_SIZE_X_UP 45
 #define PLAYER_SIZE_Y 45
+#define JUMP_HEIGHT 140
 
 #define FALSE 0
 #define TRUE 1
+	
+// NEW COLOR (not defined previously)
+#define BROWN 0x964B
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h> //For use with rand()
-#include <stdbool.h> //For use in draw line
+#define PLATFORM_WIDTH 25
+#define PLATFORM_THICKNESS 8
+
+#define NUMBER_OF_PLATFORMS 10
+// y-distance between the upper-left corners of two platforms
+#define DISTANCE_BETWEEN_PLATFORMS 20
+
+#define CHARACTER_HEIGHT 45
+#define CHARACTER_WIDTH 50
 
 volatile int pixel_buffer_start; // global variable
 
@@ -125,9 +170,7 @@ void clear_screen();
 void draw_line (int x0, int y0, int x1, int y1, short int line_colour);
 void swap (int *ptr_1, int *ptr_2);
 void plot_pixel(int x, int y, short int line_color);
-void erase (int boxes[8][NUM_BOXES]);
 void draw_box (int x, int y, short int colour);
-void draw(int boxes[8][NUM_BOXES], short int colours[NUM_BOXES], short int lineColours[NUM_BOXES]);
 void wait_for_vsync();
 void config_interrupt (int N, int CPU_target);
 void disable_A9_interrupts(void);
@@ -135,8 +178,14 @@ void disable_A9_interrupts(void);
 //DRAWING FUNCTIONS
 void load_sprite(int x_pixels, int y_pixels, uint8_t source[y_pixels][x_pixels*2], short int dest[y_pixels][x_pixels]);
 void draw_sprite(int x_pixels, int y_pixels, int x_pos, int y_pos, short int sprite[y_pixels][x_pixels]);
-void drawPlayer();
-void erasePlayer();
+void drawPlayer(int playerPosition[3][2]);
+void erasePlayer(int playerPosition[3][2]);
+void eraseOldPlatforms ();
+
+void erasePlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatformPositions[NUMBER_OF_PLATFORMS][4]); 
+void drawPlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatformPositions[NUMBER_OF_PLATFORMS][4]);
+void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]);
+void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]);
 
 /* function prototypes */
 void HEX_PS2(char, char, char);
@@ -151,6 +200,13 @@ volatile int key_dir = 0;
 volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
 
 /***		GLOBAL VARIABLES 		***/
+
+short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA, BROWN};
+
+int currentHeightUpper = RESOLUTION_Y;
+int currentHeightLower = 0;
+
+
 
 uint8_t doodler_left_pixels [45][100] = {
 /*Pixel format: Red: 5 bit, Green: 6 bit, Blue: 5 bit*/
@@ -303,14 +359,21 @@ short int doodler_right [45][50];
 short int doodler_shoot [45][45];
 
 int playerDeltaX = 0;
-int playerDeltaY = 0;
-int playerPosition[3][2] = {{150,0}, {150,0}, {150,0}};
+int playerDeltaY = -1;
 
-bool facingRight = true;
-bool facingLeft = false;
-bool facingUp = false;
+bool facingRight;
+bool facingLeft;
+bool facingUp;
 
-bool clicked = false;
+int currentJump;
+
+bool gameOver;
+
+//Logic functions
+bool checkIfHit(platform* plat);
+void moveToTop(platform platforms[NUMBER_OF_PLATFORMS],int index, int height);
+void platformHit(platform* plat);
+platform generatePlatform(int height);
 
 
 
@@ -337,12 +400,7 @@ int main(void)
     disable_A9_interrupts();
 	set_A9_IRQ_stack();      // initialize the stack pointer for IRQ mode
     config_GIC();            // configure the general interrupt controller
-    //config_HPS_timer();      // configure the HPS timer
-    //config_HPS_GPIO1();      // configure the HPS GPIO1 interface
-    //config_interval_timer(); // configure Altera interval timer to generate
 	config_PS2();
-    // interrupts
-    config_KEYs();          // configure pushbutton KEYs to generate interrupts
     enable_A9_interrupts(); // enable interrupts
 	
 	volatile int * pixel_ctrl_ptr = (int *)0xFF203020;
@@ -353,80 +411,7 @@ int main(void)
 	time_t t;
 	srand((unsigned)time(&t));
 	
-	/*COLOURS ARE STORES IN AN ARRAY SO THEY MAY BE RANDOMIZED
-	*
-	* INDEX 0: WHITE
-	* INDEX 1: GREEN
-	* INDEX 2: BLUE
-	* INDEX 4: ORANGE
-	* INDEX 5: YELLOW
-	* INDEX 6: RED
-	* INDEX 7: CYAN
-	* INDEX 8: PINK
-	* INDEX 9: GREY
-	* INDEX 10: MAGENTA
-	*
-	*/
-	
-	short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA};
-	
-	/*THE BOXES WILL THE STORED IN A DOUBLE ARRAY OF INTEGERS
-	* The first array holds an array of integers
-	* The second array of integers holds
-	* x coord of box
-	* y coord of box
-	* x step of box
-	* y step of box
-	* x previous
-	* y previous
-	* x double previous
-	* y double previous
-	*/
-	
-	int boxes [8][NUM_BOXES];
-	short int boxColours[NUM_BOXES];
-    short int lineColours[NUM_BOXES];
-	
-	//Now let's initalize the boxes with rand()
-	
-	int boxNum;
-    for (boxNum = 0; boxNum < NUM_BOXES; boxNum++) {
-		//Set x coord
-		boxes[0][boxNum] = rand() % (RESOLUTION_X - BOX_LEN);
-		
-		//Set y coord
-		boxes[1][boxNum] = rand() % (RESOLUTION_Y - BOX_LEN); 
-			
-		
-		//Set x step
-		boxes[2][boxNum] = rand() % 2 * 2 - 1;
-			
-		
-		//Set y step
-		boxes[3][boxNum] = rand() % 2 * 2 - 1;
-		
-		//Set x previous
-		boxes[4][boxNum] = 0;//boxes[0][boxNum];
-		
-		//Set y previous
-		boxes[5][boxNum] = 0;//boxes[1][boxNum];
-		
-		//Set x double previous
-		boxes[6][boxNum] = 0;//boxes[0][boxNum];
-		
-		//Set y double previous
-		boxes[7][boxNum] = 0;//boxes[1][boxNum];
-			
-			
-		//Set colour
-		boxColours[boxNum] = colours[rand() % NUM_COLOURS];
-		
-        //Set line colours
-        lineColours[boxNum] = colours[rand() % NUM_COLOURS];
-
-	}
-
-    /* set front pixel buffer to start of FPGA On-chip memory */
+	/* set front pixel buffer to start of FPGA On-chip memory */
     *(pixel_ctrl_ptr + 1) = 0xC8000000; // first store the address in the 
                                         // back buffer
     /* now, swap the front/back buffers, to set the front buffer location */
@@ -439,25 +424,80 @@ int main(void)
     pixel_buffer_start = *(pixel_ctrl_ptr + 1); // we draw on the back buffer
     clear_screen(); // pixel_buffer_start points to the pixel buffer
 	
+	platform platforms[NUMBER_OF_PLATFORMS];
+	
+	//Previous platform positions
+	int previousPlatformPositions[NUMBER_OF_PLATFORMS][4];
+	
+	//Generate platforms to start
+	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+		
+		platforms[platNum] = generatePlatform((RESOLUTION_Y - PLATFORM_THICKNESS - 1) - DISTANCE_BETWEEN_PLATFORMS * platNum);
+				
+		//DELETE LATER!!!!!!!!!( ;) :3 <3 )
+		platforms[platNum].visible = true;
+		
+		previousPlatformPositions[platNum][0] = 0;
+		previousPlatformPositions[platNum][1] = 0;
+		previousPlatformPositions[platNum][3] = 0;
+		previousPlatformPositions[platNum][4] = 0;
+		
+	}
+	
 	//Load up the sprites
 	load_sprite(50,45,doodler_left_pixels,doodler_left);
 	load_sprite(50,45,doodler_right_pixels,doodler_right);
 	load_sprite(45,45,doodler_shoot_pixels,doodler_shoot);
 	
+	//initialize the globals
+	gameOver = false;
+	
+	int playerPosition[3][2];
+	
+	facingRight = true;
+	facingLeft = false;
+	facingUp = false;
+	
+	playerDeltaX = 0;
+	playerDeltaY = -1;
+    playerPosition[0][0] = RESOLUTION_X / 2;
+	playerPosition[0][1] = RESOLUTION_Y - CHARACTER_HEIGHT;
+	playerPosition[1][0] = 0;
+	playerPosition[1][1] = 0;
+	playerPosition[2][0] = 0;
+	playerPosition[2][1] = 0;
+
+	currentJump = 0;
+	
 	int count = 0;
 	volatile int *LEDR_ptr = (int *)LEDR_BASE;
-	
-	while (1)
-    {
-        
-		erasePlayer();
 		
-		drawPlayer();
+	while (!gameOver)
+    {
+        //erase the player
+		erasePlayer(playerPosition);
+
+		//erase the platforms
+		erasePlatforms(platforms, previousPlatformPositions);
+		
+		//Erase the old platforms
+		eraseOldPlatforms();
+		
+		//draw the player
+		drawPlayer(playerPosition);
+		
+		//draw platforms
+		drawPlatforms(platforms, previousPlatformPositions);
+		
+		//check collisions
+		checkCollisions(platforms, playerPosition);
+		
+		//update the platform positions if we have jumped past the halfway point
+		updatePlatformPosition(platforms, playerPosition);
 		
         wait_for_vsync(); // swap front and back buffers on VGA vertical sync
         pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
 		
-		*(LEDR_ptr) = count;
 		count++;
 		
     }
@@ -471,8 +511,6 @@ void PS2_ISR(void)
     instead of regular memory loads and stores) */
     volatile int *PS2_ptr = (int *)PS2_BASE;
     int PS2_data, RVALID;
-
-    volatile int *LEDR_ptr = (int *)LEDR_BASE;
 	
 	char bytes[] = {0,0};
 	
@@ -489,11 +527,25 @@ void PS2_ISR(void)
 	if (bytes[0] == 0x75 || bytes[1] == 0x75){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			*(LEDR_ptr) = 1;
+			facingUp = false;
+			
+			if (playerDeltaX == 1) {
+				facingRight = true;
+				facingLeft = false;
+			}
+			
+			else if (playerDeltaX == -1) {
+				facingRight = false;
+				facingLeft = true;
+			}
+			
+			else {
+				facingRight = false;
+				facingLeft = true;
+			}
 		}
 		
 		else {
-			*(LEDR_ptr) = 2;
 			facingUp = true;
 			facingLeft = false;
 			facingRight = false;
@@ -504,11 +556,10 @@ void PS2_ISR(void)
 	else if (bytes[0] == 0x6B || bytes[1] == 0x6B){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			*(LEDR_ptr) = 3;
+			playerDeltaX = 0;
 		}
 		
 		else {
-			*(LEDR_ptr) = 4;
 			facingUp = false;
 			facingLeft = true;
 			facingRight = false;
@@ -520,21 +571,15 @@ void PS2_ISR(void)
 	else if (bytes[0] == 0x74 || bytes[1] == 0x74){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			*(LEDR_ptr) = 5;
+			playerDeltaX = 0;
 		}
 		
 		else {
-			*(LEDR_ptr) = 6;
 			facingUp = false;
 			facingLeft = false;
 			facingRight = true;
 			playerDeltaX = 1;
 		}
-	}
-	
-	//otherwise
-	else {
-		*(LEDR_ptr) = 0;
 	}
 	
 	HEX_PS2(0x0, bytes[0], bytes[1]);
@@ -772,8 +817,8 @@ void plot_pixel(int x, int y, short int line_color) {
 //DRAWS THE BOX WITH A NESTED FOR LOOP
 void draw_box (int x, int y, short int colour) {
 	int x_pixel, y_pixel;
-    for (x_pixel = 0; x_pixel < BOX_LEN; x_pixel++) {
-		for (y_pixel = 0; y_pixel < BOX_LEN; y_pixel++) {
+    for (x_pixel = 0; x_pixel < PLATFORM_WIDTH; x_pixel++) {
+		for (y_pixel = 0; y_pixel < PLATFORM_THICKNESS; y_pixel++) {
 			plot_pixel(x + x_pixel, y + y_pixel, colour);
 		}
 	}
@@ -866,7 +911,7 @@ void load_sprite(int x_pixels, int y_pixels, uint8_t source[y_pixels][x_pixels*2
  }
 };
 
-void drawPlayer() {
+void drawPlayer(int playerPosition[3][2]) {
 	
 	//Update the previous position
 	
@@ -894,31 +939,198 @@ void drawPlayer() {
 	
 	//Update the current position
 	
-	volatile int *LEDR_ptr = (int *)LEDR_BASE;
+	//Make sure we stay within the x bounds
 	
 	if (playerDeltaX == -1 && playerPosition[0][0] == 0) {
 		playerPosition[0][0] = RESOLUTION_X - PLAYER_SIZE_X_LATERAL - 1;
-		*LEDR_ptr = 1;
 	}
 	
 	else if (playerDeltaX == 1 && playerPosition[0][0] == RESOLUTION_X - 1) {
 		playerPosition[0][0] = 0;
-		*LEDR_ptr = 2;
 	}
 	
 	else {
 		playerPosition[0][0] = playerPosition[0][0] + playerDeltaX;
-		*LEDR_ptr = 4;
 	}
 	
-	//playerPosition[0][1] = playerPosition[0][1] + playerDeltaY;
+	//Make sure its within the y bounds
 	
+	volatile int *LEDR_ptr = (int *)LEDR_BASE;
+	
+	if (currentJump < JUMP_HEIGHT && playerDeltaY == -1) {
+		currentJump++;
+	}
+	
+	else if (currentJump == JUMP_HEIGHT) {
+		currentJump = 0;
+		playerDeltaY = 1;
+	}
+	
+	if (playerDeltaY == -1 && playerPosition[0][1] == 0) {
+		playerPosition[0][1] = playerPosition[0][1];//DONT INCREMENT
+	}
+	
+	else if (playerDeltaY == 1 && playerPosition[0][1] >= RESOLUTION_Y - CHARACTER_HEIGHT) {
+		playerPosition[0][1] = playerPosition[0][1];//DONT INCREMENT
+		gameOver = true;
+	}
+	
+	else {
+		playerPosition[0][1] = playerPosition[0][1] + playerDeltaY;
+	}
 }
 
-void erasePlayer() {
+void erasePlayer(int playerPosition[3][2]) {
 	for (int x = 0; x < PLAYER_SIZE_X_LATERAL; x++) {
 		for (int y = 0; y < PLAYER_SIZE_Y; y++) {
 			plot_pixel(playerPosition[2][0] + x, playerPosition[2][1] + y, BACKGROUND);
+		}
+	}
+}
+
+
+// Height is distance from the top 
+platform generatePlatform(int height) {
+    platform result;
+
+    result.y_pos = height;
+
+    // Put the platform at a random x position
+    result.x_pos = rand() % (RESOLUTION_X - PLATFORM_WIDTH);
+    
+    // Random number between 0 and 100
+    int randNum = rand() % (100 + 1);
+
+    // Use randNum to determine if platform is shown or not.
+    if (randNum < 30) {
+        result.visible = false;
+		result.color = BACKGROUND;
+    }
+    else {
+        result.visible = true;
+    }
+
+    randNum = rand() % (100 + 1);
+    // Randomly determine platform type.
+    // Greater odds on becoming a regular old platform
+    if (randNum < 60) {
+        result.type = REGULAR;
+        result.color = GREEN;
+		result.delta_x = 0;
+    }
+    else if (randNum < 70) {
+        result.type = BROKEN;
+        result.color = BROWN;
+		result.delta_x = 0;
+    }
+    else if (randNum < 90) {
+        result.type = MOVING;
+        result.color = BLUE;
+		result.delta_x = 1 - 2*(randNum % 2);
+    }
+    else {
+        result.type = DISAPPEARING;
+        result.color = WHITE;
+		result.delta_x = 0;
+    }
+	
+	//Set the previous positions
+	
+	result.x_pos_prev = 0;
+	result.y_pos_prev = 0;
+	result.x_pos_prev2 = 0;
+	result.y_pos_prev2 = 0;
+
+    return result;
+}
+
+// When platform falls below visible area, move it to top and change its type
+// Honestly doesn't need a function, just move this into main
+// height = new position at top (should be topPlatform.y_pos + distance_between_platforms or something)
+// Have it appear when the bottom platform disappears
+void moveToTop(platform platforms[NUMBER_OF_PLATFORMS],int index, int height) {
+    platforms[index] = generatePlatform(height);
+}
+
+void erasePlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatformPositions[NUMBER_OF_PLATFORMS][4]) {
+	volatile int *LEDR_ptr = (int *)LEDR_BASE;
+	
+	//iterate through the platforms
+	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+		
+		//If it's within the bounds, replace it
+		if ((platforms[platNum].x_pos_prev2 >= 0 && platforms[platNum].x_pos_prev2 < RESOLUTION_X) && (platforms[platNum].y_pos_prev2 >= 0 && platforms[platNum].y_pos_prev2 < RESOLUTION_Y)) {
+			draw_box(platforms[platNum].x_pos_prev2, platforms[platNum].y_pos_prev2, BACKGROUND);//platforms[platNum].color);
+		}
+		
+	}
+	
+}
+
+void drawPlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatformPositions[NUMBER_OF_PLATFORMS][4]) {
+	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+		
+		//Update the previous positions so that they may be erased later
+		previousPlatformPositions[platNum][3] = previousPlatformPositions[platNum][0];
+		previousPlatformPositions[platNum][4] = previousPlatformPositions[platNum][1];
+		
+		previousPlatformPositions[platNum][0] = platforms[platNum].x_pos;
+		previousPlatformPositions[platNum][1] = platforms[platNum].y_pos;
+		
+		platforms[platNum].x_pos_prev2 = platforms[platNum].x_pos_prev;
+		platforms[platNum].y_pos_prev2 = platforms[platNum].y_pos_prev;
+		
+		platforms[platNum].x_pos_prev = platforms[platNum].x_pos;
+		platforms[platNum].y_pos_prev = platforms[platNum].y_pos;
+		
+		draw_box(platforms[platNum].x_pos, platforms[platNum].y_pos, platforms[platNum].color);
+		
+		//Update the position if it's a moving platform
+		if (platforms[platNum].type == MOVING) {
+			if (platforms[platNum].x_pos <= 0 && platforms[platNum].delta_x == -1) {
+				platforms[platNum].delta_x = 1;
+			}
+
+			else if (platforms[platNum].x_pos >= RESOLUTION_X - PLATFORM_WIDTH - 1 && platforms[platNum].delta_x == 1) {
+				platforms[platNum].delta_x = -1;
+			}
+
+			else {
+				platforms[platNum].x_pos += platforms[platNum].delta_x;
+			}
+		}
+	}
+}
+
+void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]) {
+	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+		if (((playerPosition[0][1] + CHARACTER_HEIGHT) == platforms[platNum].y_pos) && playerDeltaY == 1) {
+			if (((playerPosition[0][0] + CHARACTER_WIDTH/2) > platforms[platNum].x_pos) && ((playerPosition[0][0] + CHARACTER_WIDTH/2) < platforms[platNum].x_pos + PLATFORM_WIDTH)) {
+				playerDeltaY = -1;
+			}
+		}
+	}
+}
+
+void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]) {
+	//if the player is moving up and is halfway up the screen
+	if (playerPosition[0][1] < 120 && playerDeltaY == -1) {
+		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+			if (platforms[platNum].y_pos < (RESOLUTION_Y - PLATFORM_THICKNESS)) {
+				platforms[platNum].y_pos += 1;
+			}
+			
+			else {
+				platforms[platNum] = generatePlatform(0);
+			}
+		}
+	}
+}
+
+void eraseOldPlatforms () {
+	for(int x = 0; x < RESOLUTION_X; x++) {
+		for (int y = 0; y < PLATFORM_THICKNESS; y++) {
+			plot_pixel(x, RESOLUTION_Y - y, BACKGROUND);	
 		}
 	}
 }

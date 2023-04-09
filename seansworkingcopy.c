@@ -111,6 +111,22 @@ typedef enum platformType {
 	SPRING
 } platformType;
 
+
+
+typedef struct enemy {
+    int x_pos;
+    int y_pos;
+    int visible;
+} enemy;
+
+typedef struct projectile {
+    int x_pos; // x-position of bullet (basically where it was shot from). Stays the same
+    int y_pos; // y-position of bullet. Moves continuously upwards (y=y-1) each tick. May need to account for repositioning.
+
+	int lastPositions[2][2];
+    bool visible;
+} projectile;
+
 typedef struct platform {
     int number;
     platformType type;
@@ -127,6 +143,9 @@ typedef struct platform {
 	int y_pos_prev2;
 	
 	int delta_x;
+
+	bool hasEnemy;
+    enemy enemy;
     
     bool visible;
 } platform;
@@ -164,6 +183,14 @@ void enable_A9_interrupts(void);
 
 #define CHARACTER_HEIGHT 45
 #define CHARACTER_WIDTH 50
+#define DEFAULT_JUMP_HEIGHT 100
+
+#define ENEMY_HEIGHT 10
+#define ENEMY_WIDTH 10
+#define KILLED_ENEMY_SCORE 50
+
+#define PROJECTILE_HEIGHT 20
+#define PROJECTILE_WIDTH 10
 
 volatile int pixel_buffer_start; // global variable
 
@@ -204,9 +231,6 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
 /***		GLOBAL VARIABLES 		***/
 
 short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA, BROWN};
-
-int currentHeightUpper = RESOLUTION_Y;
-int currentHeightLower = 0;
 
 
 
@@ -367,7 +391,7 @@ bool facingRight;
 bool facingLeft;
 bool facingUp;
 
-int JUMP_HEIGHT = 100;
+int JUMP_HEIGHT = DEFAULT_JUMP_HEIGHT;
 int currentJump;
 
 bool gameOver;
@@ -379,6 +403,15 @@ void moveToTop(platform platforms[NUMBER_OF_PLATFORMS],int index, int height);
 void platformHit(platform* plat);
 platform generatePlatform(int height);
 
+projectile proj;
+projectile createProjectile();
+bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]);
+
+void drawProjectile();
+void eraseOldProjectile(int count);
+void updateProjectilePosition();
+
+int playerPosition[3][2];
 
 
 /***		END OF GLOBAL VARIABLES		***/
@@ -439,8 +472,17 @@ int main(void)
 		//Previous platform positions
 		int previousPlatformPositions[NUMBER_OF_PLATFORMS][4];
 
+		proj.visible = false;
+		proj.x_pos = 0;
+		proj.y_pos = 0;
+		proj.lastPositions[1][0] = 0;
+		proj.lastPositions[1][1] = 0;
+
+		proj.lastPositions[0][0] = 0;
+		proj.lastPositions[0][1] = 0;
+
 		//Reset the jump height
-		JUMP_HEIGHT = 100;
+		JUMP_HEIGHT = DEFAULT_JUMP_HEIGHT;
 		
 		//Generate platforms to start
 		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
@@ -465,7 +507,7 @@ int main(void)
 		//initialize the globals
 		gameOver = false;
 
-		int playerPosition[3][2];
+		proj.visible = false;
 
 		facingRight = true;
 		facingLeft = false;
@@ -496,23 +538,28 @@ int main(void)
 			//Erase the old platforms
 			eraseOldPlatforms();
 
+			eraseOldProjectile(count);
+
 			//draw the player
 			drawPlayer(playerPosition);
 
 			//draw platforms
 			drawPlatforms(platforms, previousPlatformPositions);
 
+			drawProjectile();
 			//check collisions
 			checkCollisions(platforms, playerPosition);
 
 			//update the platform positions if we have jumped past the halfway point
 			updatePlatformPosition(platforms, playerPosition);
 
+			updateProjectilePosition();
+			checkIfProjectileHit(platforms);
+
 			wait_for_vsync(); // swap front and back buffers on VGA vertical sync
 			pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
 
 			count++;
-
 		}
 		
 		while (gameOver && playAgain) {
@@ -563,11 +610,14 @@ void PS2_ISR(void)
 				facingLeft = true;
 			}
 		}
-		
 		else {
 			facingUp = true;
 			facingLeft = false;
 			facingRight = false;
+
+			if (!proj.visible) {
+				createProjectile();
+			}
 		}
 	}
 	
@@ -1023,6 +1073,8 @@ void erasePlayer(int playerPosition[3][2]) {
 			plot_pixel(playerPosition[2][0] + x, playerPosition[2][1] + y, BACKGROUND);
 		}
 	}
+
+	
 }
 
 
@@ -1074,6 +1126,17 @@ platform generatePlatform(int height) {
         result.type = DISAPPEARING;
         result.color = WHITE;
 		result.delta_x = 0;
+    }
+
+	randNum = rand() % (100 + 1);
+    if (randNum < 80) {
+        result.hasEnemy = false;
+    }
+    else {
+        result.hasEnemy = true;
+        result.enemy.visible = true;
+        result.enemy.x_pos = result.x_pos + (PLATFORM_WIDTH / 2) - (ENEMY_WIDTH / 2);
+        result.enemy.y_pos = result.y_pos - ENEMY_HEIGHT;
     }
 	
 	//Set the previous positions
@@ -1128,6 +1191,10 @@ void drawPlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatfor
 		//Only draw the visible platforms
 		if (platforms[platNum].visible == true) {
 			draw_box(platforms[platNum].x_pos, platforms[platNum].y_pos, platforms[platNum].color);
+
+			if (platforms[platNum].hasEnemy && platforms[platNum].y_pos - PLATFORM_THICKNESS >= 0) {
+				draw_box(platforms[platNum].x_pos, platforms[platNum].y_pos - PLATFORM_THICKNESS, RED);
+			}
 		}
 		
 		//Update the position if it's a moving platform
@@ -1151,14 +1218,19 @@ void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPositio
 	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
 		if (((playerPosition[0][1] + CHARACTER_HEIGHT) == platforms[platNum].y_pos) && playerDeltaY == 1 && platforms[platNum].visible == true) {
 			if (((playerPosition[0][0] + CHARACTER_WIDTH/2) > platforms[platNum].x_pos) && ((playerPosition[0][0] + CHARACTER_WIDTH/2) < platforms[platNum].x_pos + PLATFORM_WIDTH)) {
+				if (platforms[platNum].hasEnemy) {
+					gameOver = true;
+					break;
+				}
+				
 				if (platforms[platNum].type == BROKEN) {
 					platforms[platNum].visible = false;
-					JUMP_HEIGHT = 100;
+					JUMP_HEIGHT = DEFAULT_JUMP_HEIGHT;
 				}
 				else if (platforms[platNum].type == DISAPPEARING) {
 					platforms[platNum].visible = false;
 					playerDeltaY = -1;
-					JUMP_HEIGHT = 100;
+					JUMP_HEIGHT = DEFAULT_JUMP_HEIGHT;
 				}
 				else if (platforms[platNum].type == SPRING) {
 					playerDeltaY = -1;
@@ -1166,7 +1238,7 @@ void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPositio
 				}
 				else {
 					playerDeltaY = -1;
-					JUMP_HEIGHT = 100;
+					JUMP_HEIGHT = DEFAULT_JUMP_HEIGHT;
 				}
 			}
 		}
@@ -1180,7 +1252,6 @@ void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int player
 			if (platforms[platNum].y_pos < (RESOLUTION_Y - PLATFORM_THICKNESS)) {
 				platforms[platNum].y_pos += 1;
 			}
-			
 			else {
 				platforms[platNum] = generatePlatform(0);
 			}
@@ -1196,4 +1267,78 @@ void eraseOldPlatforms () {
 	}
 }
 
+// Create projectile right above the character
+projectile createProjectile() {
+    projectile result;
 
+    result.visible = true;
+	result.x_pos = playerPosition[0][0] + (CHARACTER_WIDTH / 2);
+	result.y_pos = playerPosition[0][1] + PROJECTILE_HEIGHT;
+
+	if (result.x_pos >= RESOLUTION_X - PROJECTILE_WIDTH) {
+		result.x_pos = RESOLUTION_X - PROJECTILE_WIDTH - 1;
+	}
+
+	if (result.y_pos < 0) {
+		result.y_pos = 0;
+	}
+
+    return result;
+}
+
+bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
+    for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
+        if (!platforms[i].hasEnemy || !platforms[i].enemy.visible) {
+            continue;
+        }
+
+        bool xHit = proj.x_pos >= platforms[i].x_pos && proj.x_pos <= platforms[i].x_pos + PLATFORM_WIDTH;
+        bool yHit = proj.y_pos == platforms[i].y_pos + PLATFORM_THICKNESS;
+
+        if (xHit && yHit) {
+            proj.visible = false;
+
+            platforms[i].enemy.visible = false;
+            platforms[i].hasEnemy = false;
+            // state.score += KILLED_ENEMY_SCORE;
+            return true;
+        }
+    }
+	return false;
+}
+
+void drawProjectile() {
+	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+		for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+			plot_pixel(proj.x_pos + x, proj.y_pos + y, BLUE);
+		}
+	}
+}
+
+void eraseOldProjectile(int count) {
+	if (count >= 2) {
+		for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+			for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+				plot_pixel(proj.lastPositions[1][0] + x, proj.lastPositions[1][1] + y, BACKGROUND);
+			}
+		}
+	}
+	
+}
+
+void updateProjectilePosition() {
+	proj.lastPositions[1][0] = proj.lastPositions[0][0];
+	proj.lastPositions[1][1] = proj.lastPositions[0][1];
+
+	proj.lastPositions[0][0] = proj.x_pos;
+	proj.lastPositions[0][1] = proj.y_pos;
+
+	// If not repositioning
+	if (!(playerPosition[0][1] < 120 && playerDeltaY == -1)) {
+		proj.y_pos--;
+
+		if (proj.y_pos == 0) {
+			proj.visible = false;
+		}
+	}
+}

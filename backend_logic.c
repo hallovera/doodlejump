@@ -285,12 +285,13 @@ void createInitialPlatforms() {
     }
 }
 
-projectile createProjectile(int x, int y) {
+// Create projectile right above the character
+projectile createProjectile() {
     projectile result;
 
     result.visible = true;
-    result.x_pos = x;
-    result.y_pos = y;
+    result.x_pos = ch.x_pos + (CHARACTER_WIDTH / 2);
+    result.y_pos = ch.y_pos;
 
     return result;
 }
@@ -403,7 +404,12 @@ void updateProjectilePosition() {
         proj.y_pos--;
     }
     
-    checkIfProjectileHit();    
+    checkIfProjectileHit();  
+
+    // Check if projectile hit the top of the screen
+    if (proj.y_pos == 0) {
+        proj.visible = false;
+    }  
 }
 
 // Change position of screen objects

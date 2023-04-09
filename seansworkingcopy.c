@@ -107,7 +107,8 @@ typedef enum platformType {
     REGULAR, 
     BROKEN, 
     MOVING, 
-    DISAPPEARING
+    DISAPPEARING,
+	SPRING
 } platformType;
 
 typedef struct platform {
@@ -146,7 +147,7 @@ void enable_A9_interrupts(void);
 #define PLAYER_SIZE_X_LATERAL 50
 #define PLAYER_SIZE_X_UP 45
 #define PLAYER_SIZE_Y 45
-#define JUMP_HEIGHT 70
+//#define JUMP_HEIGHT 100
 
 #define FALSE 0
 #define TRUE 1
@@ -366,6 +367,7 @@ bool facingRight;
 bool facingLeft;
 bool facingUp;
 
+int JUMP_HEIGHT = 100;
 int currentJump;
 
 bool gameOver;
@@ -437,6 +439,9 @@ int main(void)
 		//Previous platform positions
 		int previousPlatformPositions[NUMBER_OF_PLATFORMS][4];
 
+		//Reset the jump height
+		JUMP_HEIGHT = 100;
+		
 		//Generate platforms to start
 		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
 
@@ -1045,21 +1050,26 @@ platform generatePlatform(int height) {
     randNum = rand() % (100 + 1);
     // Randomly determine platform type.
     // Greater odds on becoming a regular old platform
-    if (randNum < 60) {
+    if (randNum < 50) {
         result.type = REGULAR;
         result.color = GREEN;
 		result.delta_x = 0;
     }
-    else if (randNum < 70) {
+    else if (randNum < 60) {
         result.type = BROKEN;
         result.color = BROWN;
 		result.delta_x = 0;
     }
-    else if (randNum < 90) {
+    else if (randNum < 80) {
         result.type = MOVING;
         result.color = BLUE;
 		result.delta_x = 1 - 2*(randNum % 2);
     }
+	else if (randNum < 90) {
+		result.type = SPRING;
+		result.color = ORANGE;
+		result.delta_x = 0;
+	}
     else {
         result.type = DISAPPEARING;
         result.color = WHITE;
@@ -1143,13 +1153,20 @@ void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPositio
 			if (((playerPosition[0][0] + CHARACTER_WIDTH/2) > platforms[platNum].x_pos) && ((playerPosition[0][0] + CHARACTER_WIDTH/2) < platforms[platNum].x_pos + PLATFORM_WIDTH)) {
 				if (platforms[platNum].type == BROKEN) {
 					platforms[platNum].visible = false;
+					JUMP_HEIGHT = 100;
 				}
 				else if (platforms[platNum].type == DISAPPEARING) {
 					platforms[platNum].visible = false;
 					playerDeltaY = -1;
+					JUMP_HEIGHT = 100;
+				}
+				else if (platforms[platNum].type == SPRING) {
+					playerDeltaY = -1;
+					JUMP_HEIGHT = 240;
 				}
 				else {
 					playerDeltaY = -1;
+					JUMP_HEIGHT = 100;
 				}
 			}
 		}

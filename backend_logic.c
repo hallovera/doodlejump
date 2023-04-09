@@ -26,17 +26,16 @@
 // NEW COLOR (not defined previously)
 #define BROWN 0x964B
 
-#define PLATFORM_WIDTH 25
-#define PLATFORM_THICKNESS 8
+#define PLATFORM_WIDTH 60
+#define PLATFORM_THICKNESS 15
 
-#define NUMBER_OF_PLATFORMS 7
+#define NUMBER_OF_PLATFORMS 5
 // y-distance between the upper-left corners of two platforms
-#define DISTANCE_BETWEEN_PLATFORMS 20
+#define DISTANCE_BETWEEN_PLATFORMS 40
 
 #define CHARACTER_HEIGHT 45
 #define CHARACTER_WIDTH 50
-// Currently about 1/3 of the screen height
-#define CHARACTER_JUMP_HEIGHT 80
+#define CHARACTER_JUMP_HEIGHT 50
 
 #define PROJECTILE_HEIGHT 15
 #define PROJECTILE_WIDTH 5
@@ -277,7 +276,7 @@ bool checkIfHit(int index) {
 }
 
 void createInitialPlatforms() {
-    int currentHeight = 0;
+    int currentHeight = DISTANCE_BETWEEN_PLATFORMS;
 
     for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
         platforms[i] = generatePlatform(currentHeight);

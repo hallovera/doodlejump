@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <time.h> //For use with rand()
 #include <stdbool.h> //For use in draw line
-#include <stdint.h>
 
 /* This files provides address values that exist in the system */
 
@@ -146,15 +145,15 @@ void enable_A9_interrupts(void);
 #define PLAYER_SIZE_X_LATERAL 50
 #define PLAYER_SIZE_X_UP 45
 #define PLAYER_SIZE_Y 45
-#define JUMP_HEIGHT 70
+#define JUMP_HEIGHT 140
 
 #define FALSE 0
 #define TRUE 1
 	
 // NEW COLOR (not defined previously)
-#define BROWN 0x3900
+#define BROWN 0x964B
 
-#define PLATFORM_WIDTH 35
+#define PLATFORM_WIDTH 25
 #define PLATFORM_THICKNESS 8
 
 #define NUMBER_OF_PLATFORMS 10
@@ -203,11 +202,6 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
 /***		GLOBAL VARIABLES 		***/
 
 short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA, BROWN};
-
-int currentHeightUpper = RESOLUTION_Y;
-int currentHeightLower = 0;
-
-
 
 uint8_t doodler_left_pixels [45][100] = {
 /*Pixel format: Red: 5 bit, Green: 6 bit, Blue: 5 bit*/
@@ -359,18 +353,6 @@ short int doodler_left [45][50];
 short int doodler_right [45][50];
 short int doodler_shoot [45][45];
 
-int playerDeltaX = 0;
-int playerDeltaY = -1;
-
-bool facingRight;
-bool facingLeft;
-bool facingUp;
-
-int currentJump;
-
-bool gameOver;
-bool playAgain;
-
 //Logic functions
 bool checkIfHit(platform* plat);
 void moveToTop(platform platforms[NUMBER_OF_PLATFORMS],int index, int height);
@@ -413,108 +395,96 @@ int main(void)
 	time_t t;
 	srand((unsigned)time(&t));
 	
-	playAgain = true;
+	/* set front pixel buffer to start of FPGA On-chip memory */
+    *(pixel_ctrl_ptr + 1) = 0xC8000000; // first store the address in the 
+                                        // back buffer
+    /* now, swap the front/back buffers, to set the front buffer location */
+    wait_for_vsync();
+    /* initialize a pointer to the pixel buffer, used by drawing functions */
+    pixel_buffer_start = *pixel_ctrl_ptr;
+    clear_screen(); // pixel_buffer_start points to the pixel buffer
+    /* set back pixel buffer to start of SDRAM memory */
+    *(pixel_ctrl_ptr + 1) = 0xC0000000;
+    pixel_buffer_start = *(pixel_ctrl_ptr + 1); // we draw on the back buffer
+    clear_screen(); // pixel_buffer_start points to the pixel buffer
 	
-	while (playAgain) {
+	platform platforms[NUMBER_OF_PLATFORMS];
 	
-		/* set front pixel buffer to start of FPGA On-chip memory */
-		*(pixel_ctrl_ptr + 1) = 0xC8000000; // first store the address in the 
-											// back buffer
-		/* now, swap the front/back buffers, to set the front buffer location */
-		wait_for_vsync();
-		/* initialize a pointer to the pixel buffer, used by drawing functions */
-		pixel_buffer_start = *pixel_ctrl_ptr;
-		clear_screen(); // pixel_buffer_start points to the pixel buffer
-		/* set back pixel buffer to start of SDRAM memory */
-		*(pixel_ctrl_ptr + 1) = 0xC0000000;
-		pixel_buffer_start = *(pixel_ctrl_ptr + 1); // we draw on the back buffer
-		clear_screen(); // pixel_buffer_start points to the pixel buffer
+	//Previous platform positions
+	int previousPlatformPositions[NUMBER_OF_PLATFORMS][4];
 	
-	
-	
-		platform platforms[NUMBER_OF_PLATFORMS];
-
-		//Previous platform positions
-		int previousPlatformPositions[NUMBER_OF_PLATFORMS][4];
-
-		//Generate platforms to start
-		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
-
-			platforms[platNum] = generatePlatform((RESOLUTION_Y - PLATFORM_THICKNESS - 1) - DISTANCE_BETWEEN_PLATFORMS * platNum);
-
-			//DELETE LATER!!!!!!!!!( ;) :3 <3 )
-			platforms[platNum].visible = true;
-
-			previousPlatformPositions[platNum][0] = 0;
-			previousPlatformPositions[platNum][1] = 0;
-			previousPlatformPositions[platNum][3] = 0;
-			previousPlatformPositions[platNum][4] = 0;
-
-		}
-
-		//Load up the sprites
-		load_sprite(50,45,doodler_left_pixels,doodler_left);
-		load_sprite(50,45,doodler_right_pixels,doodler_right);
-		load_sprite(45,45,doodler_shoot_pixels,doodler_shoot);
-
-		//initialize the globals
-		gameOver = false;
-
-		int playerPosition[3][2];
-
-		facingRight = true;
-		facingLeft = false;
-		facingUp = false;
-
-		playerDeltaX = 0;
-		playerDeltaY = -1;
-		playerPosition[0][0] = RESOLUTION_X / 2;
-		playerPosition[0][1] = RESOLUTION_Y - CHARACTER_HEIGHT;
-		playerPosition[1][0] = 0;
-		playerPosition[1][1] = 0;
-		playerPosition[2][0] = 0;
-		playerPosition[2][1] = 0;
-
-		currentJump = 0;
-
-		int count = 0;
-		volatile int *LEDR_ptr = (int *)LEDR_BASE;
-
-		while (!gameOver)
-		{
-			//erase the player
-			erasePlayer(playerPosition);
-
-			//erase the platforms
-			erasePlatforms(platforms, previousPlatformPositions);
-
-			//Erase the old platforms
-			eraseOldPlatforms();
-
-			//draw the player
-			drawPlayer(playerPosition);
-
-			//draw platforms
-			drawPlatforms(platforms, previousPlatformPositions);
-
-			//check collisions
-			checkCollisions(platforms, playerPosition);
-
-			//update the platform positions if we have jumped past the halfway point
-			updatePlatformPosition(platforms, playerPosition);
-
-			wait_for_vsync(); // swap front and back buffers on VGA vertical sync
-			pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
-
-			count++;
-
-		}
+	//Generate platforms to start
+	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
 		
-		while (gameOver && playAgain) {
-			HEX_PS2(0xDE, 0xAD, 0x00);
-		}
+		platforms[platNum] = generatePlatform((RESOLUTION_Y - PLATFORM_THICKNESS - 1) - DISTANCE_BETWEEN_PLATFORMS * platNum);
+				
+		//DELETE LATER!!!!!!!!!( ;) :3 <3 )
+		platforms[platNum].visible = true;
+		
+		previousPlatformPositions[platNum][0] = 0;
+		previousPlatformPositions[platNum][1] = 0;
+		previousPlatformPositions[platNum][3] = 0;
+		previousPlatformPositions[platNum][4] = 0;
 		
 	}
+	
+	//Load up the sprites
+	load_sprite(50,45,doodler_left_pixels,doodler_left);
+	load_sprite(50,45,doodler_right_pixels,doodler_right);
+	load_sprite(45,45,doodler_shoot_pixels,doodler_shoot);
+	
+	//initialize the globals
+	state.gameOver = false;
+	
+	int playerPosition[3][2];
+	
+	ch.facingRight = true;
+	ch.facingLeft = false;
+	ch.facingUp = false;
+	
+	ch.deltaX = 0;
+	ch.deltaY = -1;
+    playerPosition[0][0] = RESOLUTION_X / 2;
+	playerPosition[0][1] = RESOLUTION_Y - CHARACTER_HEIGHT;
+	playerPosition[1][0] = 0;
+	playerPosition[1][1] = 0;
+	playerPosition[2][0] = 0;
+	playerPosition[2][1] = 0;
+
+	ch.jumpedAmount = 0;
+	
+	int count = 0;
+	volatile int *LEDR_ptr = (int *)LEDR_BASE;
+		
+	while (!state.gameOver)
+    {
+        //erase the player
+		erasePlayer(playerPosition);
+
+		//erase the platforms
+		erasePlatforms(platforms, previousPlatformPositions);
+		
+		//Erase the old platforms
+		eraseOldPlatforms();
+		
+		//draw the player
+		drawPlayer(playerPosition);
+		
+		//draw platforms
+		drawPlatforms(platforms, previousPlatformPositions);
+		
+		//check collisions
+		checkCollisions(platforms, playerPosition);
+		
+		//update the platform positions if we have jumped past the halfway point
+		updatePlatformPosition(platforms, playerPosition);
+		
+        wait_for_vsync(); // swap front and back buffers on VGA vertical sync
+        pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
+		
+		count++;
+		
+    }
 	    
 }
 
@@ -541,28 +511,28 @@ void PS2_ISR(void)
 	if (bytes[0] == 0x75 || bytes[1] == 0x75){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			facingUp = false;
+			ch.facingUp = false;
 			
-			if (playerDeltaX == 1) {
-				facingRight = true;
-				facingLeft = false;
+			if (ch.deltaX == 1) {
+				ch.facingRight = true;
+				ch.facingLeft = false;
 			}
 			
-			else if (playerDeltaX == -1) {
-				facingRight = false;
-				facingLeft = true;
+			else if (ch.deltaX == -1) {
+				ch.facingRight = false;
+				ch.facingLeft = true;
 			}
 			
 			else {
-				facingRight = false;
-				facingLeft = true;
+				ch.facingRight = false;
+				ch.facingLeft = true;
 			}
 		}
 		
 		else {
-			facingUp = true;
-			facingLeft = false;
-			facingRight = false;
+			ch.facingUp = true;
+			ch.facingLeft = false;
+			ch.facingRight = false;
 		}
 	}
 	
@@ -570,14 +540,14 @@ void PS2_ISR(void)
 	else if (bytes[0] == 0x6B || bytes[1] == 0x6B){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			playerDeltaX = 0;
+			ch.deltaX = 0;
 		}
 		
 		else {
-			facingUp = false;
-			facingLeft = true;
-			facingRight = false;
-			playerDeltaX = -1;
+			ch.facingUp = false;
+			ch.facingLeft = true;
+			ch.facingRight = false;
+			ch.deltaX = -1;
 		}
 	}
 	
@@ -585,32 +555,14 @@ void PS2_ISR(void)
 	else if (bytes[0] == 0x74 || bytes[1] == 0x74){
 		//we have unpressed the button
 		if (bytes[0] == 0xF0) {
-			playerDeltaX = 0;
+			ch.deltaX = 0;
 		}
 		
 		else {
-			facingUp = false;
-			facingLeft = false;
-			facingRight = true;
-			playerDeltaX = 1;
-		}
-	}
-	
-	//If we press Q, quit the game
-	else if (bytes[0] == 0x15 || bytes[1] == 0x15) {
-		if (gameOver) {
-			playAgain = false;
-		}
-
-		else if (!gameOver) {
-			gameOver = true;
-		}
-	}
-	
-	//If we press the down arrow, start the game again!
-	else if (bytes[0] == 0x72 || bytes[1] == 0x72) {
-		if (gameOver) {
-			gameOver = false;
+			ch.facingUp = false;
+			ch.facingLeft = false;
+			ch.facingRight = true;
+			ch.deltaX = 1;
 		}
 	}
 	
@@ -957,15 +909,15 @@ void drawPlayer(int playerPosition[3][2]) {
 		
 	//Draw the current player
 	
-	if (facingUp) {
+	if (ch.facingUp) {
 		draw_sprite(PLAYER_SIZE_X_UP, PLAYER_SIZE_Y, playerPosition[0][0], playerPosition[0][1], doodler_shoot);
 	}
 	
-	else if (facingLeft) {
+	else if (ch.facingLeft) {
 		draw_sprite(PLAYER_SIZE_X_LATERAL, PLAYER_SIZE_Y, playerPosition[0][0], playerPosition[0][1], doodler_left);
 	}
 	
-	else if (facingRight) {
+	else if (ch.facingRight) {
 		draw_sprite(PLAYER_SIZE_X_LATERAL, PLAYER_SIZE_Y, playerPosition[0][0], playerPosition[0][1], doodler_right);
 	}
 	
@@ -973,42 +925,42 @@ void drawPlayer(int playerPosition[3][2]) {
 	
 	//Make sure we stay within the x bounds
 	
-	if (playerDeltaX == -1 && playerPosition[0][0] == 0) {
+	if (ch.deltaX == -1 && playerPosition[0][0] == 0) {
 		playerPosition[0][0] = RESOLUTION_X - PLAYER_SIZE_X_LATERAL - 1;
 	}
 	
-	else if (playerDeltaX == 1 && playerPosition[0][0] == RESOLUTION_X - 1) {
+	else if (ch.deltaX == 1 && playerPosition[0][0] == RESOLUTION_X - 1) {
 		playerPosition[0][0] = 0;
 	}
 	
 	else {
-		playerPosition[0][0] = playerPosition[0][0] + playerDeltaX;
+		playerPosition[0][0] = playerPosition[0][0] + ch.deltaX;
 	}
 	
 	//Make sure its within the y bounds
 	
 	volatile int *LEDR_ptr = (int *)LEDR_BASE;
 	
-	if (currentJump < JUMP_HEIGHT && playerDeltaY == -1) {
-		currentJump++;
+	if (ch.jumpedAmount < JUMP_HEIGHT && ch.deltaY == -1) {
+		ch.jumpedAmount++;
 	}
 	
-	else if (currentJump == JUMP_HEIGHT) {
-		currentJump = 0;
-		playerDeltaY = 1;
+	else if (ch.jumpedAmount == JUMP_HEIGHT) {
+		ch.jumpedAmount = 0;
+		ch.deltaY = 1;
 	}
 	
-	if (playerDeltaY == -1 && playerPosition[0][1] == 0) {
+	if (ch.deltaY == -1 && playerPosition[0][1] == 0) {
 		playerPosition[0][1] = playerPosition[0][1];//DONT INCREMENT
 	}
 	
-	else if (playerDeltaY == 1 && playerPosition[0][1] >= RESOLUTION_Y - CHARACTER_HEIGHT) {
+	else if (ch.deltaY == 1 && playerPosition[0][1] >= RESOLUTION_Y - CHARACTER_HEIGHT) {
 		playerPosition[0][1] = playerPosition[0][1];//DONT INCREMENT
-		gameOver = true;
+		state.gameOver = true;
 	}
 	
 	else {
-		playerPosition[0][1] = playerPosition[0][1] + playerDeltaY;
+		playerPosition[0][1] = playerPosition[0][1] + ch.deltaY;
 	}
 }
 
@@ -1115,10 +1067,7 @@ void drawPlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatfor
 		platforms[platNum].x_pos_prev = platforms[platNum].x_pos;
 		platforms[platNum].y_pos_prev = platforms[platNum].y_pos;
 		
-		//Only draw the visible platforms
-		if (platforms[platNum].visible == true) {
-			draw_box(platforms[platNum].x_pos, platforms[platNum].y_pos, platforms[platNum].color);
-		}
+		draw_box(platforms[platNum].x_pos, platforms[platNum].y_pos, platforms[platNum].color);
 		
 		//Update the position if it's a moving platform
 		if (platforms[platNum].type == MOVING) {
@@ -1139,18 +1088,9 @@ void drawPlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatfor
 
 void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]) {
 	for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
-		if (((playerPosition[0][1] + CHARACTER_HEIGHT) == platforms[platNum].y_pos) && playerDeltaY == 1 && platforms[platNum].visible == true) {
+		if (((playerPosition[0][1] + CHARACTER_HEIGHT) == platforms[platNum].y_pos) && ch.deltaY == 1) {
 			if (((playerPosition[0][0] + CHARACTER_WIDTH/2) > platforms[platNum].x_pos) && ((playerPosition[0][0] + CHARACTER_WIDTH/2) < platforms[platNum].x_pos + PLATFORM_WIDTH)) {
-				if (platforms[platNum].type == BROKEN) {
-					platforms[platNum].visible = false;
-				}
-				else if (platforms[platNum].type == DISAPPEARING) {
-					platforms[platNum].visible = false;
-					playerDeltaY = -1;
-				}
-				else {
-					playerDeltaY = -1;
-				}
+				ch.deltaY = -1;
 			}
 		}
 	}
@@ -1158,7 +1098,7 @@ void checkCollisions (platform platforms[NUMBER_OF_PLATFORMS], int playerPositio
 
 void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int playerPosition[3][2]) {
 	//if the player is moving up and is halfway up the screen
-	if (playerPosition[0][1] < 120 && playerDeltaY == -1) {
+	if (playerPosition[0][1] < 120 && ch.deltaY == -1) {
 		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
 			if (platforms[platNum].y_pos < (RESOLUTION_Y - PLATFORM_THICKNESS)) {
 				platforms[platNum].y_pos += 1;
@@ -1173,8 +1113,8 @@ void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int player
 
 void eraseOldPlatforms () {
 	for(int x = 0; x < RESOLUTION_X; x++) {
-		for (int y = 0; y < PLATFORM_THICKNESS + 1; y++) {
-			plot_pixel(x, RESOLUTION_Y - y - 1, BACKGROUND);	
+		for (int y = 0; y < PLATFORM_THICKNESS; y++) {
+			plot_pixel(x, RESOLUTION_Y - y, BACKGROUND);	
 		}
 	}
 }

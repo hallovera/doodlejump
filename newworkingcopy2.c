@@ -82,9 +82,10 @@
 #define ORANGE 0xFC00
 #define BLACK 0x0000
 #define BACKGROUND 0x9FFF
+#define BROWN 0x964B
 
 #define ABS(x) (((x) > 0) ? (x) : -(x))
-	
+
 //Constants for IRQ Handler
 #define PS2_IRQ              0x4F //IR ID for PS2
 
@@ -95,6 +96,39 @@
 #define INT_DISABLE			0b11000000
 
 #define ENABLE 0x1
+
+/* Screen size. */
+#define RESOLUTION_X 320
+#define RESOLUTION_Y 240
+
+#define PLATFORM_WIDTH 35
+#define PLATFORM_THICKNESS 8
+#define NUMBER_OF_PLATFORMS 10
+// y-distance between the upper-left corners of two platforms
+#define DISTANCE_BETWEEN_PLATFORMS 20
+
+#define CHARACTER_HEIGHT 45
+#define CHARACTER_WIDTH 50
+#define PLAYER_SIZE_X_LATERAL 50
+#define PLAYER_SIZE_X_UP 45
+#define PLAYER_SIZE_Y 45
+#define CHARACTER_JUMP_HEIGHT 80
+
+#define FALSE 0
+#define TRUE 1
+
+#define PROJECTILE_HEIGHT 15
+#define PROJECTILE_WIDTH 5
+
+#define ENEMY_HEIGHT 10
+#define ENEMY_WIDTH 10
+#define KILLED_ENEMY_SCORE 50
+
+// Score stuff
+#define BASE_PLATFORM_HIT_SCORE 30
+#define BROKEN_PLATFORM_HIT_SCORE 10
+#define MOVING_PLATFORM_HIT_SCORE 50
+#define DISAPPEARING_PLATFORM_HIT_SCORE 40
 	
 /*
  * Platform types:
@@ -109,6 +143,25 @@ typedef enum platformType {
     MOVING, 
     DISAPPEARING
 } platformType;
+
+typedef struct GameState {
+    // When jump will take character past 1/2 of the y-height, reposition the platforms so it reaches 1/2 at max
+    bool repositioning;
+    int repositionAmount;
+
+    int score;
+
+    int topPlatformIndex;
+
+    // Whether game is over or not 
+    bool gameOver;
+} GameState;
+
+typedef struct enemy {
+    int x_pos;
+    int y_pos;
+    int visible;
+} enemy;
 
 typedef struct platform {
     int number;
@@ -126,9 +179,18 @@ typedef struct platform {
 	int y_pos_prev2;
 	
 	int delta_x;
+
+    bool hasEnemy;
+    enemy enemy;
     
     bool visible;
 } platform;
+
+typedef struct projectile {
+    int x_pos; // x-position of bullet (basically where it was shot from). Stays the same
+    int y_pos; // y-position of bullet. Moves continuously upwards (y=y-1) each tick. May need to account for repositioning.
+    bool visible;
+} projectile;
 
 void set_A9_IRQ_stack(void);
 void config_GIC(void);
@@ -137,32 +199,6 @@ void config_HPS_GPIO1(void);
 void config_interval_timer(void);
 void config_KEYs(void);
 void enable_A9_interrupts(void);
-
-//Lab 5 Functions
-/* Screen size. */
-#define RESOLUTION_X 320
-#define RESOLUTION_Y 240
-	
-#define PLAYER_SIZE_X_LATERAL 50
-#define PLAYER_SIZE_X_UP 45
-#define PLAYER_SIZE_Y 45
-#define JUMP_HEIGHT 70
-
-#define FALSE 0
-#define TRUE 1
-	
-// NEW COLOR (not defined previously)
-#define BROWN 0x3900
-
-#define PLATFORM_WIDTH 35
-#define PLATFORM_THICKNESS 8
-
-#define NUMBER_OF_PLATFORMS 10
-// y-distance between the upper-left corners of two platforms
-#define DISTANCE_BETWEEN_PLATFORMS 20
-
-#define CHARACTER_HEIGHT 45
-#define CHARACTER_WIDTH 50
 
 volatile int pixel_buffer_start; // global variable
 
@@ -203,11 +239,6 @@ volatile int pattern = 0x0F0F0F0F; // pattern for LED lights
 /***		GLOBAL VARIABLES 		***/
 
 short int colours[] = {WHITE, GREEN, BLUE, ORANGE, YELLOW, RED, CYAN, PINK, GREY, MAGENTA, BROWN};
-
-int currentHeightUpper = RESOLUTION_Y;
-int currentHeightLower = 0;
-
-
 
 uint8_t doodler_left_pixels [45][100] = {
 /*Pixel format: Red: 5 bit, Green: 6 bit, Blue: 5 bit*/
@@ -989,11 +1020,11 @@ void drawPlayer(int playerPosition[3][2]) {
 	
 	volatile int *LEDR_ptr = (int *)LEDR_BASE;
 	
-	if (currentJump < JUMP_HEIGHT && playerDeltaY == -1) {
+	if (currentJump < CHARACTER_JUMP_HEIGHT && playerDeltaY == -1) {
 		currentJump++;
 	}
 	
-	else if (currentJump == JUMP_HEIGHT) {
+	else if (currentJump == CHARACTER_JUMP_HEIGHT) {
 		currentJump = 0;
 		playerDeltaY = 1;
 	}

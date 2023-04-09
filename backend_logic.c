@@ -38,24 +38,18 @@
 // Currently about 1/3 of the screen height
 #define CHARACTER_JUMP_HEIGHT 80
 
+#define PROJECTILE_HEIGHT 15
+#define PROJECTILE_WIDTH 5
+
+#define ENEMY_HEIGHT 10
+#define ENEMY_WIDTH 10
+#define KILLED_ENEMY_SCORE 50
+
 // Score stuff
 #define BASE_PLATFORM_HIT_SCORE 30
 #define BROKEN_PLATFORM_HIT_SCORE 10
 #define MOVING_PLATFORM_HIT_SCORE 50
 #define DISAPPEARING_PLATFORM_HIT_SCORE 40
-int score = 0;
-
-int currentUpperHeight = 0;
-int currentLowerHeight = RESOLUTION_Y - 1;
-
-int topPlatformIndex = 0;
-
-int lastHitHeight = -1;
-
-bool moveScreen = false;
-
-int currentJumpedAmount = 0;
-bool countJump = false;
 
 /*
  * Platform types:
@@ -71,6 +65,24 @@ typedef enum platformType {
     DISAPPEARING
 } platformType;
 
+typedef struct GameState {
+    // When jump will take character past 1/2 of the y-height, reposition the platforms so it reaches 1/2 at max
+    bool repositioning;
+    int repositionAmount;
+
+    int score;
+
+    int topPlatformIndex;
+
+    // Whether game is over or not 
+    bool gameOver;
+} GameState;
+typedef struct enemy {
+    int x_pos;
+    int y_pos;
+    int visible;
+} enemy;
+
 // NOTE: Platform may have NEGATIVE y_pos. This means it is still fully/partially ABOVE the screen,
 // and should not be drawn yet.
 typedef struct platform {
@@ -84,6 +96,9 @@ typedef struct platform {
 
     // Horizontal movement of platform (1 or -1 for MOVING, 0 for all other types)
     int deltaX;
+
+    bool hasEnemy;
+    enemy enemy;
     
     bool visible;
 } platform;
@@ -93,22 +108,49 @@ typedef struct character {
     int deltaX; // X direction of character, either 0 (no change), 1 or -1, determined by keyboard press
     int x_pos; // x position of character
     int y_pos; // y position of character
+
+    bool countJump; // Determines if character is "jumping"
+    int jumpedAmount;
 } character;
 
 typedef struct projectile {
     int x_pos; // x-position of bullet (basically where it was shot from). Stays the same
-    int y_pos; // y-position
+    int y_pos; // y-position of bullet. Moves continuously upwards (y=y-1) each tick. May need to account for repositioning.
+    bool visible;
 } projectile;
 
-// PUT THIS IN MAIN LATER
+// ===============================================
+// The game's global variables.
+
+GameState state;
+
 platform platforms[NUMBER_OF_PLATFORMS];
+character ch;
+
+projectile proj;
+
+// ================================================
+
+// Initialize game's global variables with relevant values
+void initializeGameState() {
+    state.gameOver = false;
+    state.repositioning = false;
+    state.score = 0;
+
+    ch.x_pos = RESOLUTION_X / 2;
+    ch.y_pos = RESOLUTION_Y - CHARACTER_HEIGHT - 2;
+    ch.countJump = 0;
+
+    proj.visible = false;
+    proj.x_pos = 0;
+    proj.y_pos = 0;
+}
 
 // Height is distance from the top 
 platform generatePlatform(int height) {
     platform result;
 
     result.y_pos = height;
-    // result.y_pos = height + (PLATFORM_THICKNESS - 1);
 
     // Put the platform at a random x position
     result.x_pos = rand() % (RESOLUTION_X - PLATFORM_WIDTH);
@@ -130,75 +172,104 @@ platform generatePlatform(int height) {
     if (randNum < 60) {
         result.type = REGULAR;
         result.color = GREEN;
+        result.deltaX = 0;
     }
     else if (randNum < 70) {
         result.type = BROKEN;
         result.color = BROWN;
+        result.deltaX = 0;
     }
     else if (randNum < 90) {
         result.type = MOVING;
         result.color = BLUE;
+
+        if (result.x_pos + PLATFORM_WIDTH < RESOLUTION_X - 1) {
+            result.deltaX = 1;
+        }
+        else {
+            result.deltaX = -1;
+        }
     }
     else {
         result.type = DISAPPEARING;
         result.color = WHITE;
+        result.deltaX = 0;
+    }
+
+    // Determine if platform has an enemy standing on it
+    randNum = rand() % (100 + 1);
+    if (randNum < 80) {
+        result.hasEnemy = false;
+    }
+    else {
+        result.hasEnemy = true;
+        result.enemy.visible = true;
+        result.enemy.x_pos = result.x_pos + (PLATFORM_WIDTH / 2) - (ENEMY_WIDTH / 2);
+        result.enemy.y_pos = result.y_pos - ENEMY_HEIGHT;
     }
 
     return result;
 }
 
 // ONLY CALL THIS FUNCTION IF CHAR HITS THE PLATFORM FROM ABOVE, NOT BELOW
-void platformHit(character* ch, int index) {
+void platformHit(int index) {
     if (!platforms[index].visible) {
         return;
     }
 
     switch (platforms[index].type) {
         case REGULAR:
-            ch->deltaY = 1;
-            score += BASE_PLATFORM_HIT_SCORE;
+            ch.deltaY = 1;
+            state.score += BASE_PLATFORM_HIT_SCORE;
             break;
         case BROKEN:
             platforms[index].visible = false;
-            score += BROKEN_PLATFORM_HIT_SCORE;
+            state.score += BROKEN_PLATFORM_HIT_SCORE;
             break;
         case MOVING:
-            ch->deltaY = 1;
-            score += MOVING_PLATFORM_HIT_SCORE;
+            ch.deltaY = 1;
+            state.score += MOVING_PLATFORM_HIT_SCORE;
             break;
         case DISAPPEARING:
             platforms[index].visible = false;
-            score += DISAPPEARING_PLATFORM_HIT_SCORE;
-            ch->deltaY = 1;
+            state.score += DISAPPEARING_PLATFORM_HIT_SCORE;
+            ch.deltaY = 1;
             break;
         default:
             break;
     }
-    lastHitHeight = index;
+
+    ch.countJump = true;
+    ch.jumpedAmount = 0;
+
+    if (platforms[index].y_pos - CHARACTER_JUMP_HEIGHT <= RESOLUTION_Y / 2) {
+        state.repositioning = true;
+
+        // Remember: lower position means HIGHER y-value with the VGA display!
+        state.repositionAmount = (RESOLUTION_Y / 2) - (platforms[index].y_pos - CHARACTER_JUMP_HEIGHT);
+    }
 }
 
 // When platform falls below visible area, move it to top and change its type
-// Honestly doesn't need a function, just move this into main
 // height = new position at top (should be topPlatform.y_pos + distance_between_platforms or something)
 // Have it appear when the bottom platform disappears
 void moveToTop(int index, int height) {
     platforms[index] = generatePlatform(height);
 }
 
-bool checkIfHit(character* ch, int index) {
+bool checkIfHit(int index) {
     if (!platforms[index].visible) {
         return false;
     }
 
-    int characterCentre = ((ch->x_pos + CHARACTER_WIDTH) + ch->x_pos) / 2;
+    int characterCentre = ((ch.x_pos + CHARACTER_WIDTH) + ch.x_pos) / 2;
 
-    bool yHit = (ch->y_pos + CHARACTER_HEIGHT == platforms[index].y_pos);
+    bool yHit = (ch.y_pos + CHARACTER_HEIGHT == platforms[index].y_pos);
     bool xHit = characterCentre >= platforms[index].x_pos && 
                 characterCentre <= platforms[index].x_pos + PLATFORM_WIDTH - 1;
 
     if (xHit && yHit) {
-        platformHit(ch, index);
-        countJump = true;
+        platformHit(index);
         return true;
     }
 
@@ -214,56 +285,143 @@ void createInitialPlatforms() {
     }
 }
 
-// WORK IN PROGRESS
-// Change position of screen objects
-void updateObjectPositions(character* ch) {
-    // Update character
-    ch->y_pos -= ch->deltaY;
+projectile createProjectile(int x, int y) {
+    projectile result;
 
-    
-    ch->x_pos += ch->deltaX;
+    result.visible = true;
+    result.x_pos = x;
+    result.y_pos = y;
 
-    // Flip deltaY once certain jump height reached
-    if (countJump) {
-        currentJumpedAmount++;
-    }
+    return result;
+}
 
-    if (currentJumpedAmount == CHARACTER_JUMP_HEIGHT) {
-        ch->deltaY = -1;
-        countJump = false;
-        currentJumpedAmount = 0;
-        ch->deltaX = 0;
-    }
+bool checkIfGameOver() {
+    bool characterHitBottom = ch.y_pos >= RESOLUTION_Y - CHARACTER_HEIGHT - 1;
+    bool characterHitEnemy = false;
 
-    // currentJumpedAmount = ch->deltaY == 1 ? currentJumpedAmount + 1 : currentJumpedAmount;
-    
-
-    // ch->deltaY = currentJumpedAmount == CHARACTER_JUMP_HEIGHT ? -1 : ch->deltaY;
-
-    
-    // Make screen move downwards if character's current jump will make it reach the 1/2 mark of the screen
-    //TODO
-
-    lastHitHeight = lastHitHeight != -1 ? lastHitHeight + 1 : lastHitHeight;
-
-    // Update projectiles
-    // Projectiles will disappear if 
-    
-
-    // Update platforms
     for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
-        // Check if platform hit by character
-        checkIfHit(ch, i);
-        //
-        // platforms[i].y_pos++;
+        if (platforms[i].hasEnemy && platforms[i].enemy.visible) {
+            characterHitEnemy = true;
+        }
+    }
 
-        if (platforms[i].y_pos > currentLowerHeight) {
-            moveToTop(i, platforms[topPlatformIndex].y_pos - DISTANCE_BETWEEN_PLATFORMS);
-            topPlatformIndex = i;
+    if (characterHitBottom || characterHitEnemy) {
+        state.gameOver = true;
+        return true;
+    } 
+    return false;
+}
+
+void gameOver() {
+    // PLACEHOLDER BEHAVIOUR
+    while (true) {
+        printf("Game over\n");
+    }
+}
+
+bool checkIfProjectileHit() {
+    for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
+        if (!platforms[i].hasEnemy || !platforms[i].enemy.visible) {
+            continue;
         }
 
+        bool xHit = proj.x_pos >= platforms[i].x_pos && proj.x_pos <= platforms[i].x_pos + PLATFORM_WIDTH;
+        bool yHit = proj.y_pos == platforms[i].y_pos + PLATFORM_THICKNESS;
 
+        if (xHit && yHit) {
+            proj.visible = false;
+
+            platforms[i].enemy.visible = false;
+            platforms[i].hasEnemy = false;
+            state.score += KILLED_ENEMY_SCORE;
+            return true;
+        }
+        return false;
+    }
+}
+
+// ============= UPDATE OBJECT POSITIONS ===============
+
+void updateCharacterPosition() {
+    if (!state.repositioning) {
+        ch.y_pos -= ch.deltaY;
     }
 
-    // Update
+    if (ch.countJump) {
+        ch.jumpedAmount++;
+    }
+
+    if (ch.jumpedAmount == CHARACTER_JUMP_HEIGHT) {
+        ch.deltaY = -1;
+        ch.countJump = false;
+        ch.jumpedAmount = 0;
+        ch.deltaX = 0;
+    }
+
+    ch.x_pos += ch.deltaX;
+}
+
+// Also updates enemy positions, if one is on it
+void updatePlatformPositions() {
+    for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
+        checkIfHit(i);
+
+        if (state.repositioning) {
+            platforms[i].y_pos++;
+
+            if (platforms[i].hasEnemy) {
+                platforms[i].enemy.y_pos++;
+            }
+        }
+
+        if (platforms[i].deltaX != 0) {
+            platforms[i].x_pos += platforms[i].deltaX;
+            platforms[i].enemy.x_pos += platforms[i].deltaX;
+
+            if (platforms[i].deltaX == 1 && platforms[i].x_pos + PLATFORM_WIDTH >= RESOLUTION_X - 1) {
+                platforms[i].deltaX = -1;
+            }
+            else if (platforms[i].deltaX == -1 && platforms[i].x_pos == 0) {
+                platforms[i].deltaX = 1;
+            }
+        }
+
+        if (platforms[i].y_pos > RESOLUTION_Y - 1) {
+            moveToTop(i, platforms[state.topPlatformIndex].y_pos - DISTANCE_BETWEEN_PLATFORMS);
+            state.topPlatformIndex = i;
+        }
+    }
+}
+
+void updateProjectilePosition() {
+    if (!proj.visible) {
+        return;
+    }
+
+    if (!state.repositioning) {
+        // Move each projectile up one y-pixel
+        proj.y_pos--;
+    }
+    
+    checkIfProjectileHit();    
+}
+
+// Change position of screen objects
+void updatePositions() {
+    updateCharacterPosition();
+    updatePlatformPositions();
+    updateProjectilePosition();
+
+    // May want to move into main func later
+    if (checkIfGameOver()) {
+        gameOver();
+    }
+
+    if (state.repositioning) {
+        state.repositionAmount--;
+
+        if (state.repositionAmount == 0) {
+            state.repositioning = false;
+        }
+    }
 }

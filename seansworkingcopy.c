@@ -1317,18 +1317,24 @@ projectile createProjectile() {
 bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
     for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
 		if (enemyHit) {
+			clear_screen();
+			// int diff = platforms[i].y_pos - PLATFORM_THICKNESS;
+			// while (diff < 0) {
+			// 	diff++;
+			// }
+			// draw_box(platforms[i].x_pos, diff, BACKGROUND);
+			
+			// diff = platforms[i].y_pos_prev - PLATFORM_THICKNESS;
+			// while (diff < 0) {
+			// 	diff++;
+			// }
+			// draw_box(platforms[i].x_pos_prev, diff, BACKGROUND);
 
-			int diff = platforms[i].y_pos - PLATFORM_THICKNESS;
-			while (diff < 0) {
-				diff++;
-			}
-			draw_box(platforms[i].x_pos, diff, BACKGROUND);
-
-			diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
-			while (diff < 0) {
-				diff++;
-			}
-			draw_box(platforms[i].x_pos_prev2, diff, BACKGROUND);
+			// diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
+			// while (diff < 0) {
+			// 	diff++;
+			// }
+			// draw_box(platforms[i].x_pos_prev2, diff, BACKGROUND);
 
 			// diff = platforms[i].y_pos - PLATFORM_THICKNESS;
 			// while (diff < 0) {
@@ -1354,12 +1360,19 @@ bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
 
 
 			enemyHit = true;
+			// clear_screen();
 
 			int diff = platforms[i].y_pos - PLATFORM_THICKNESS;
 			while (diff < 0) {
 				diff++;
 			}
 			draw_box(platforms[i].x_pos, diff, BACKGROUND);
+
+			diff = platforms[i].y_pos_prev - PLATFORM_THICKNESS;
+			while (diff < 0) {
+				diff++;
+			}
+			draw_box(platforms[i].x_pos_prev, diff, BACKGROUND);
 
 			diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
 			while (diff < 0) {

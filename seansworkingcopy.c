@@ -1433,7 +1433,7 @@ void drawProjectile() {
 	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 		for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
 			if (proj.x_pos + x < RESOLUTION_X && proj.y_pos + y < RESOLUTION_Y) {
-				plot_pixel(proj.x_pos + x, proj.y_pos + y, BLUE);
+				plot_pixel(proj.x_pos + x, proj.y_pos + y, MAGENTA);
 			}
 		}
 	}

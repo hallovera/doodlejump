@@ -413,6 +413,7 @@ void updateProjectilePosition();
 
 int playerPosition[3][2];
 
+bool projHitTop = false;
 
 /***		END OF GLOBAL VARIABLES		***/
 
@@ -526,6 +527,8 @@ int main(void)
 		int count = 0;
 		volatile int *LEDR_ptr = (int *)LEDR_BASE;
 
+		
+
 		while (!gameOver)
 		{
 			//erase the player
@@ -536,9 +539,18 @@ int main(void)
 
 			//Erase the old platforms
 			eraseOldPlatforms();
+
+			if (proj.visible) {
+				checkIfProjectileHit(platforms);
+			}
 			
 			// if (count >= 2) {
-			// 	eraseOldProjectile(count);
+			if (proj.visible || projHitTop) {
+				eraseOldProjectile(count);
+			}
+
+			projHitTop = false;
+			
 			// }
 		
 			//draw the player
@@ -622,7 +634,7 @@ void PS2_ISR(void)
 			facingRight = false;
 
 			if (!proj.visible) {
-				createProjectile();
+				proj = createProjectile();
 			}
 		}
 	}
@@ -1315,6 +1327,13 @@ bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
 
             platforms[i].enemy.visible = false;
             platforms[i].hasEnemy = false;
+
+			int diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
+			while (diff < 0) {
+				diff++;
+			}
+			draw_box(platforms[i].x_pos_prev2, diff, BACKGROUND);
+
             // state.score += KILLED_ENEMY_SCORE;
             return true;
         }
@@ -1333,11 +1352,38 @@ void drawProjectile() {
 }
 
 void eraseOldProjectile(int count) {
+	if (projHitTop) {
+		for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+			for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+				int ydiff = y;
+				int xdiff = proj.x_pos + x;
+
+				while (ydiff >= RESOLUTION_Y) {
+					ydiff--;
+				}
+
+				while (xdiff >= RESOLUTION_X) {
+					xdiff--;
+				}
+				plot_pixel(xdiff, ydiff, BACKGROUND);
+			}
+		}
+		return;
+	}
+
 	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 		for (int y = 0; y < PROJECTILE_HEIGHT + 3; ++y) {
-			if (proj.x_pos + x < RESOLUTION_X && proj.y_pos + y < RESOLUTION_Y) {
-				plot_pixel(proj.x_pos + x, proj.y_pos + y - 1, BACKGROUND);
+			int ydiff = proj.y_pos + y - 1;
+			int xdiff = proj.x_pos + x;
+
+			while (ydiff >= RESOLUTION_Y) {
+				ydiff--;
 			}
+
+			while (xdiff >= RESOLUTION_X) {
+				xdiff--;
+			}
+			plot_pixel(xdiff, ydiff, BACKGROUND);
 		}
 	}
 }
@@ -1355,6 +1401,19 @@ void updateProjectilePosition() {
 
 		if (proj.y_pos == 0) {
 			proj.visible = false;
+			projHitTop = true;
+
+			// for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+			// 	for (int y = 0; y < RESOLUTION_Y; ++y) {
+			// 		int ydiff = y;
+			// 		int xdiff = proj.x_pos + x;
+
+			// 		while (xdiff >= RESOLUTION_X) {
+			// 			xdiff--;
+			// 		}
+			// 		plot_pixel(xdiff, ydiff, BACKGROUND);
+			// 	}
+			// }
 		}
 	}
 }

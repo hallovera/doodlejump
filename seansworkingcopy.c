@@ -477,7 +477,6 @@ int main(void)
 		proj.y_pos = 0;
 		proj.lastPositions[1][0] = 0;
 		proj.lastPositions[1][1] = 0;
-
 		proj.lastPositions[0][0] = 0;
 		proj.lastPositions[0][1] = 0;
 
@@ -537,25 +536,32 @@ int main(void)
 
 			//Erase the old platforms
 			eraseOldPlatforms();
-
-			eraseOldProjectile(count);
-
+			
+			// if (count >= 2) {
+			// 	eraseOldProjectile(count);
+			// }
+		
 			//draw the player
 			drawPlayer(playerPosition);
 
 			//draw platforms
 			drawPlatforms(platforms, previousPlatformPositions);
 
-			drawProjectile();
+			if (proj.visible) {
+				drawProjectile();
+			}
+			
 			//check collisions
 			checkCollisions(platforms, playerPosition);
 
 			//update the platform positions if we have jumped past the halfway point
 			updatePlatformPosition(platforms, playerPosition);
 
-			updateProjectilePosition();
-			checkIfProjectileHit(platforms);
-
+			if (proj.visible) {
+				updateProjectilePosition();
+				checkIfProjectileHit(platforms);
+			}
+			
 			wait_for_vsync(); // swap front and back buffers on VGA vertical sync
 			pixel_buffer_start = *(pixel_ctrl_ptr + 1); // new back buffer
 
@@ -1073,8 +1079,6 @@ void erasePlayer(int playerPosition[3][2]) {
 			plot_pixel(playerPosition[2][0] + x, playerPosition[2][1] + y, BACKGROUND);
 		}
 	}
-
-	
 }
 
 
@@ -1166,6 +1170,14 @@ void erasePlatforms (platform platforms[NUMBER_OF_PLATFORMS], int previousPlatfo
 		//If it's within the bounds, replace it
 		if ((platforms[platNum].x_pos_prev2 >= 0 && platforms[platNum].x_pos_prev2 < RESOLUTION_X) && (platforms[platNum].y_pos_prev2 >= 0 && platforms[platNum].y_pos_prev2 < RESOLUTION_Y)) {
 			draw_box(platforms[platNum].x_pos_prev2, platforms[platNum].y_pos_prev2, BACKGROUND);//platforms[platNum].color);
+
+			if (platforms[platNum].hasEnemy) {
+				int diff = platforms[platNum].y_pos_prev2 - PLATFORM_THICKNESS;
+				while (diff < 0) {
+					diff++;
+				}
+				draw_box(platforms[platNum].x_pos_prev2, diff, BACKGROUND);
+			}
 		}
 		
 	}
@@ -1249,6 +1261,9 @@ void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int player
 	//if the player is moving up and is halfway up the screen
 	if (playerPosition[0][1] < 120 && playerDeltaY == -1) {
 		for (int platNum = 0; platNum < NUMBER_OF_PLATFORMS; platNum++) {
+			// if (platforms[platNum].hasEnemy && platforms[platNum].y_pos < (RESOLUTION_Y - 2 * PLATFORM_THICKNESS)) {
+			// 	platforms[platNum].y_pos += 1;
+			// }
 			if (platforms[platNum].y_pos < (RESOLUTION_Y - PLATFORM_THICKNESS)) {
 				platforms[platNum].y_pos += 1;
 			}
@@ -1261,7 +1276,7 @@ void updatePlatformPosition (platform platforms[NUMBER_OF_PLATFORMS], int player
 
 void eraseOldPlatforms () {
 	for(int x = 0; x < RESOLUTION_X; x++) {
-		for (int y = 0; y < PLATFORM_THICKNESS + 1; y++) {
+		for (int y = 0; y < 2 * PLATFORM_THICKNESS + 1; y++) {
 			plot_pixel(x, RESOLUTION_Y - y - 1, BACKGROUND);	
 		}
 	}
@@ -1310,20 +1325,21 @@ bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
 void drawProjectile() {
 	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 		for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
-			plot_pixel(proj.x_pos + x, proj.y_pos + y, BLUE);
+			if (proj.x_pos + x < RESOLUTION_X && proj.y_pos + y < RESOLUTION_Y) {
+				plot_pixel(proj.x_pos + x, proj.y_pos + y, BLUE);
+			}
 		}
 	}
 }
 
 void eraseOldProjectile(int count) {
-	if (count >= 2) {
-		for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
-			for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
-				plot_pixel(proj.lastPositions[1][0] + x, proj.lastPositions[1][1] + y, BACKGROUND);
+	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+		for (int y = 0; y < PROJECTILE_HEIGHT + 3; ++y) {
+			if (proj.x_pos + x < RESOLUTION_X && proj.y_pos + y < RESOLUTION_Y) {
+				plot_pixel(proj.x_pos + x, proj.y_pos + y - 1, BACKGROUND);
 			}
 		}
 	}
-	
 }
 
 void updateProjectilePosition() {

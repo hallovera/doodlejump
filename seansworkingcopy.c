@@ -414,6 +414,7 @@ void updateProjectilePosition();
 int playerPosition[3][2];
 
 bool projHitTop = false;
+bool enemyHit = false;
 
 /***		END OF GLOBAL VARIABLES		***/
 
@@ -540,7 +541,7 @@ int main(void)
 			//Erase the old platforms
 			eraseOldPlatforms();
 
-			if (proj.visible) {
+			if (proj.visible || enemyHit) {
 				checkIfProjectileHit(platforms);
 			}
 			
@@ -1315,6 +1316,29 @@ projectile createProjectile() {
 
 bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
     for (int i = 0; i < NUMBER_OF_PLATFORMS; ++i) {
+		if (enemyHit) {
+
+			int diff = platforms[i].y_pos - PLATFORM_THICKNESS;
+			while (diff < 0) {
+				diff++;
+			}
+			draw_box(platforms[i].x_pos, diff, BACKGROUND);
+
+			diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
+			while (diff < 0) {
+				diff++;
+			}
+			draw_box(platforms[i].x_pos_prev2, diff, BACKGROUND);
+
+			// diff = platforms[i].y_pos - PLATFORM_THICKNESS;
+			// while (diff < 0) {
+			// 	diff++;
+			// }
+			// draw_box(platforms[i].x_pos, diff, BACKGROUND);
+
+			enemyHit = false;
+		}
+
         if (!platforms[i].hasEnemy || !platforms[i].enemy.visible) {
             continue;
         }
@@ -1328,11 +1352,62 @@ bool checkIfProjectileHit(platform platforms[NUMBER_OF_PLATFORMS]) {
             platforms[i].enemy.visible = false;
             platforms[i].hasEnemy = false;
 
-			int diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
+
+			enemyHit = true;
+
+			int diff = platforms[i].y_pos - PLATFORM_THICKNESS;
+			while (diff < 0) {
+				diff++;
+			}
+			draw_box(platforms[i].x_pos, diff, BACKGROUND);
+
+			diff = platforms[i].y_pos_prev2 - PLATFORM_THICKNESS;
 			while (diff < 0) {
 				diff++;
 			}
 			draw_box(platforms[i].x_pos_prev2, diff, BACKGROUND);
+
+			
+
+			// ERASE PROJECTILE TOO
+			projHitTop = true;
+
+			for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+				for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+					int ydiff = proj.y_pos + y;
+					int xdiff = proj.x_pos + x;
+
+					int xdiff2 = proj.lastPositions[1][0] + x;
+					int ydiff2 = proj.lastPositions[1][1] + y;
+
+					// int ydiff2 = proj.lastPositions[0][1] + y;
+					// int xdiff2 = proj.lastPositions[0][1] + x;
+
+					if (ydiff >= RESOLUTION_Y) {
+						continue;
+						// ydiff--;
+					}
+
+					if (ydiff < 0) {
+						continue;
+					}
+
+					if (ydiff2 >= RESOLUTION_Y || ydiff2 < 0) {
+						continue;
+					}
+
+					if (xdiff >= RESOLUTION_X) {
+						continue;
+						// xdiff--;
+					}
+
+					
+
+					plot_pixel(xdiff, ydiff, BACKGROUND);
+					plot_pixel(xdiff2, ydiff2, BACKGROUND);
+					// plot_pixel(xdiff2, ydiff2, BACKGROUND);
+				}
+			}			
 
             // state.score += KILLED_ENEMY_SCORE;
             return true;
@@ -1355,33 +1430,90 @@ void eraseOldProjectile(int count) {
 	if (projHitTop) {
 		for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 			for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
-				int ydiff = y;
+				int ydiff = proj.y_pos + y;
 				int xdiff = proj.x_pos + x;
 
-				while (ydiff >= RESOLUTION_Y) {
-					ydiff--;
+				int xdiff2 = proj.lastPositions[1][0] + x;
+				int ydiff2 = proj.lastPositions[1][1] + y;
+
+				// int ydiff2 = proj.lastPositions[0][1] + y;
+				// int xdiff2 = proj.lastPositions[0][1] + x;
+
+				if (ydiff >= RESOLUTION_Y) {
+					continue;
+					// ydiff--;
 				}
 
-				while (xdiff >= RESOLUTION_X) {
-					xdiff--;
+				if (ydiff < 0) {
+					continue;
 				}
+
+				if (ydiff2 >= RESOLUTION_Y || ydiff2 < 0) {
+					continue;
+				}
+
+				if (xdiff >= RESOLUTION_X) {
+					continue;
+					// xdiff--;
+				}
+
+				
+
 				plot_pixel(xdiff, ydiff, BACKGROUND);
+				plot_pixel(xdiff2, ydiff2, BACKGROUND);
+				// plot_pixel(xdiff2, ydiff2, BACKGROUND);
 			}
 		}
 		return;
 	}
 
+	// for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+	// 	for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+	// 		int ydiff = proj.lastPositions[1][1] + y;
+	// 		int xdiff = proj.lastPositions[1][0] + x;
+
+	// 		// int ydiff2 = proj.lastPositions[0][1] + y;
+	// 		// int xdiff2 = proj.lastPositions[0][1] + x;
+
+	// 		while (ydiff >= RESOLUTION_Y) {
+	// 			continue;
+	// 			// ydiff--;
+	// 		}
+
+	// 		while (ydiff < 0) {
+	// 			continue;
+	// 		}
+
+	// 		while (xdiff >= RESOLUTION_X) {
+	// 			continue;
+	// 			// xdiff--;
+	// 		}
+
+			
+
+	// 		plot_pixel(xdiff, ydiff, BACKGROUND);
+	// 		// plot_pixel(xdiff2, ydiff2, BACKGROUND);
+	// 	}
+	// }
+
+	
 	for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 		for (int y = 0; y < PROJECTILE_HEIGHT + 3; ++y) {
 			int ydiff = proj.y_pos + y - 1;
 			int xdiff = proj.x_pos + x;
 
-			while (ydiff >= RESOLUTION_Y) {
+			if (ydiff >= RESOLUTION_Y) {
 				ydiff--;
+				continue;
 			}
 
-			while (xdiff >= RESOLUTION_X) {
+			if (ydiff < 0) {
+				continue;
+			}
+
+			if (xdiff >= RESOLUTION_X) {
 				xdiff--;
+				continue;
 			}
 			plot_pixel(xdiff, ydiff, BACKGROUND);
 		}
@@ -1403,6 +1535,42 @@ void updateProjectilePosition() {
 			proj.visible = false;
 			projHitTop = true;
 
+			for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
+				for (int y = 0; y < PROJECTILE_HEIGHT; ++y) {
+					int ydiff = proj.y_pos + y;
+					int xdiff = proj.x_pos + x;
+
+					int xdiff2 = proj.lastPositions[1][0] + x;
+					int ydiff2 = proj.lastPositions[1][1] + y;
+
+					// int ydiff2 = proj.lastPositions[0][1] + y;
+					// int xdiff2 = proj.lastPositions[0][1] + x;
+
+					if (ydiff >= RESOLUTION_Y) {
+						continue;
+						// ydiff--;
+					}
+
+					if (ydiff < 0) {
+						continue;
+					}
+
+					if (ydiff2 >= RESOLUTION_Y || ydiff2 < 0) {
+						continue;
+					}
+
+					if (xdiff >= RESOLUTION_X) {
+						continue;
+						// xdiff--;
+					}
+
+					
+
+					plot_pixel(xdiff, ydiff, BACKGROUND);
+					plot_pixel(xdiff2, ydiff2, BACKGROUND);
+					// plot_pixel(xdiff2, ydiff2, BACKGROUND);
+				}
+			}
 			// for (int x = 0; x < PROJECTILE_WIDTH; ++x) {
 			// 	for (int y = 0; y < RESOLUTION_Y; ++y) {
 			// 		int ydiff = y;

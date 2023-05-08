@@ -6,7 +6,11 @@ This is an implementation of the popular mobile game [Doodle Jump](https://play.
 The final version of our code is in ```doodlejump_final.c``` (due to certain software limitations, we had to put all our code into a single file).
 
 ## Purpose and Results
-This project helped us learn a lot about embedded and low-level hardware programming, as well as computer organization. This included: how to interface directly with computer peripherals like keyboards and monitors using memory-mapped I/O; how to translate Assembly into high-level languages like C (and vice versa); how to use hardware interrupts in both Assembly and C to control the game and handle user input; and how to actively create and erase graphics at the most granular, pixel-by-pixel level, without the help of any graphics libraries whatsoever, and then have it displayed on a monitor in real-time. 
+This project helped us learn a lot about embedded and low-level hardware programming, as well as computer organization. This included: 
+* How to interface directly with computer peripherals like keyboards and monitors using memory-mapped I/O; 
+* How to translate Assembly into high-level languages like C (and vice versa);
+* How to use hardware interrupts in both Assembly and C to control the game and handle user input; and 
+* Hhow to actively create and erase graphics at the most granular, pixel-by-pixel level, without the help of any graphics libraries whatsoever, and then have it displayed on a monitor in real-time. 
 
 ## Instructions
 The original demonstration was done in-person on a physical VGA monitor, which can't be done anymore. However, you can still demo the game using [CPULator](https://cpulator.01xz.net/?sys=arm-de1soc), an ARM processor emulator. Follow these steps:
